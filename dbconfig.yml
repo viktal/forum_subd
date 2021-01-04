@@ -1,0 +1,6 @@
+development:
+  dialect: postgres
+  datasource: host=localhost dbname=forum_subd user=postgres password=docker sslmode=disable
+  dir: migrations
+  table: migrations
+  schema: public

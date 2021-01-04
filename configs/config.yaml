@@ -1,0 +1,13 @@
+---
+listen: :8080
+
+docPath: /opt/doc
+
+db:
+  host: localhost
+  port: 5432
+  user: postgres
+  password: docker
+  name: forum_subd
+
+redis_address: localhost:7001
