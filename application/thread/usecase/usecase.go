@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"forum/application/common"
 	"forum/application/models"
 	"forum/application/thread"
 	logger "github.com/apsdehal/go-logger"
@@ -38,9 +39,6 @@ func (u *UseCase) GetThreadDetails(slugOrID string) (*models.Thread, error) {
 	return t, nil
 }
 
-func (u *UseCase) CreateThread(threads models.ListThread) (*models.Thread, error) {
-	return u.repos.CreateThread(threads)
-}
 
 func (u *UseCase) UpdateThread(slugOrID string, t models.Thread) (*models.Thread, error) {
 	var newThread *models.Thread
@@ -61,11 +59,11 @@ func (u *UseCase) UpdateThread(slugOrID string, t models.Thread) (*models.Thread
 func (u *UseCase) CreatePosts(slugOrID string, posts models.ListPosts) (*models.ListPosts, error) {
 	var newThread *models.ListPosts
 	var err error
-	var id int
-	if id, err = strconv.Atoi(slugOrID); err == nil {
-		newThread, err = u.repos.CreatePostsByID(id, posts)
+	var _ int
+	if _, err = strconv.Atoi(slugOrID); err == nil {
+		newThread, err = u.repos.CreatePosts(slugOrID, common.ID, posts)
 	} else {
-		newThread, err = u.repos.CreatePostsBySlag(slugOrID, posts)
+		newThread, err = u.repos.CreatePosts(slugOrID, common.Slug, posts)
 	}
 
 	if err != nil {
@@ -74,10 +72,33 @@ func (u *UseCase) CreatePosts(slugOrID string, posts models.ListPosts) (*models.
 	return newThread, nil
 }
 
-func (u *UseCase) GetPostsThread(params models.ThreadParams) ([]models.Thread, error) {
-	return u.repos.GetPostsThread(params)
+func (u *UseCase) GetPostsThread(slugOrID string) ([]models.Post, error) {
+	var posts []models.Post
+	var err error
+	var id int
+	if id, err = strconv.Atoi(slugOrID); err == nil {
+		posts, err = u.repos.GetPostsThreadByID(id)
+	} else {
+		posts, err = u.repos.GetPostsThreadBySlug(slugOrID)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	return posts, nil
 }
 
-func (u *UseCase) VoteOnThread(vote models.Vote) (*models.Thread, error) {
-	return u.repos.VoteOnThread(vote)
+func (u *UseCase) VoteOnThread(slugOrID string, vote models.Vote) (*models.Thread, error) {
+	var thread *models.Thread
+	var err error
+	var id int
+	if id, err = strconv.Atoi(slugOrID); err == nil {
+		thread, err = u.repos.VoteOnThreadByID(id, vote)
+	} else {
+		thread, err = u.repos.VoteOnThreadBySlug(slugOrID, vote)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return thread, nil
 }

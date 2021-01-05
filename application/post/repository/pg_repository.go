@@ -1,8 +1,9 @@
 package repository
 
 import (
-	"github.com/go-park-mail-ru/2020_2_MVVM.git/application/models"
-	"github.com/go-park-mail-ru/2020_2_MVVM.git/application/post"
+	"fmt"
+	"forum/application/models"
+	"forum/application/post"
 	"github.com/go-pg/pg/v9"
 )
 
@@ -14,22 +15,30 @@ type pgStorage struct {
 	db *pg.DB
 }
 
-func (p pgStorage) GetPostDetails(ID int32, related []string) (*models.PostFull, error) {
-	panic("implement me")
+func (p pgStorage) GetPostByID(ID int) (*models.Post, error) {
+	var post models.Post
+	query := fmt.Sprintf(`select post_id, forum, author, user_id, forum_id, thread_id, 
+								message, parent, is_edited, created 
+			from main.post where post.post_id = '%d'`, ID)
+
+	_, err := p.db.Query(&post, query)
+	if err != nil {
+		return nil, err
+	}
+	return &post, nil
 }
 
-func (p pgStorage) CreateThread(thread models.Thread) (*models.Thread, error) {
-	panic("implement me")
-}
+func (p pgStorage) UpdatePostDetails(id int, message string) (*models.Post, error) {
+	var post models.Post
+	query := fmt.Sprintf(`update main.post
+		set message = '%s',
+		is_edited = true
+		where main.post.post_id = '%v'
+		returning post_id, forum, author, thread_id, message, parent, is_edited, created `, message, id)
 
-func (p pgStorage) UpdateThread(thread models.Thread) (*models.Thread, error) {
-	panic("implement me")
-}
-
-func (p pgStorage) GetPostsThread(params models.ThreadParams) ([]models.Thread, error) {
-	panic("implement me")
-}
-
-func (p pgStorage) VoteOnThread(vote models.Vote) (*models.Thread, error) {
-	panic("implement me")
+	_, err := p.db.Query(&post, query)
+	if err != nil {
+		return nil, err
+	}
+	return &post, nil
 }

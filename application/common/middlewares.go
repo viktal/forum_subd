@@ -67,7 +67,7 @@ func ErrorMiddleware() gin.HandlerFunc {
 				case Err:
 					ret = append(ret, err.Err)
 				default:
-					ret = append(ret, NewErr(c.Writer.Status(), http.StatusText(c.Writer.Status()), nil))
+					ret = append(ret, NewErr(c.Writer.Status(), http.StatusText(c.Writer.Status())))
 				}
 			}
 			c.JSON(0, ret)

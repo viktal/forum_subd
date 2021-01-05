@@ -15,6 +15,17 @@ type pgStorage struct {
 	db *pg.DB
 }
 
+func (p *pgStorage) GetUserByID(ID int) (*models.User, error) {
+	var user models.User
+	query := fmt.Sprintf(`select * from main.users
+							where user_id = '%d'`, ID)
+
+	_, err := p.db.Query(&user, query)
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
 
 func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 	var user models.User

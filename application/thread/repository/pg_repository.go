@@ -2,9 +2,11 @@ package repository
 
 import (
 	"fmt"
+	"forum/application/common"
 	"forum/application/models"
 	"forum/application/thread"
 	"github.com/go-pg/pg/v9"
+	"strconv"
 	"time"
 )
 
@@ -16,11 +18,10 @@ type pgStorage struct {
 	db *pg.DB
 }
 
-
 func (p *pgStorage) GetThreadDetailsByID(ID int) (*models.Thread, error) {
 	var thread models.Thread
 	query := fmt.Sprintf(`select  main.thread.*, 
-		u.nickname as author, 
+		u.nickname, 
 		main.forum.title as forum
 			from main.thread
 			join main.forum  on forum.forum_id = main.thread.forum_id
@@ -81,43 +82,59 @@ func (p *pgStorage) UpdateThreadBySlug(slug string, thread models.Thread) (*mode
 }
 
 
-func (p *pgStorage) CreatePostsByID(ID int, posts models.ListPosts) (*models.ListPosts, error) {
+func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.ListPosts) (*models.ListPosts, error) {
 	query := fmt.Sprintf(`insert into main.post values`)
 
 	values := ""
-	for _, post := range posts {
-		post.ThreadID = ID
-		post.Created = time.Now()
-		if post.Forum != "" {
-			_, err := p.db.Query(&post.ForumID, "select main.forum.forum_id " +
-				"from main.forum " +
-				"where forum.slug = ?", post.Forum)
+	for i := range posts {
+		if byType == common.ID {
+			id, err := strconv.Atoi(slugOrID)
+			if err != nil {
+				return nil, err
+			}
+			posts[i].ThreadID = id
+			_, err = p.db.Query(&posts[i].ThreadSlug, "select main.thread.slug " +
+				"from main.thread " +
+				"where thread.thread_id = ?", posts[i].ThreadID)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			posts[i].ThreadSlug = slugOrID
+			_, err := p.db.Query(&posts[i].ThreadID, "select main.thread.thread_id " +
+				"from main.thread " +
+				"where thread.slug = ?", posts[i].ThreadSlug)
 			if err != nil {
 				return nil, err
 			}
 		}
 
-		_, err := p.db.Query(&post.UserID, "select main.users.user_id " +
-			"from main.users " +
-			"where users.nickname = ?", post.Author)
+		posts[i].Created = time.Now()
+		_, err := p.db.Query(&posts[i].ForumID, "select forum.forum_id " +
+			"from main.forum " +
+			"join main.thread on forum.forum_id = thread.forum_id " +
+			"where thread.thread_id = ?", posts[i].ThreadID)
 		if err != nil {
 			return nil, err
 		}
 
-		_, err = p.db.Query(&post.ThreadSlug, "select main.thread.slug " +
-			"from main.thread " +
-			"where thread.thread_id = ?", post.ThreadID)
+		_, err = p.db.Query(&posts[i].UserID, "select main.users.user_id " +
+			"from main.users " +
+			"where users.nickname = ?", posts[i].Author)
 		if err != nil {
 			return nil, err
 		}
 
 		values += fmt.Sprintf(`('%d', '%s', '%d', '%s', '%d', '%s', '%s', '%d', '%t', '%v')`,
-			post.ForumID, post.Forum, post.UserID, post.Author, post.ThreadID, post.ThreadSlug, post.Message,
-			post.Parent, post.IsEdited, post.Created.Format(time.RFC3339))
+			posts[i].ForumID, posts[i].Forum, posts[i].UserID, posts[i].Author, posts[i].ThreadID, posts[i].ThreadSlug,
+			posts[i].Message, posts[i].Parent, posts[i].IsEdited, posts[i].Created.Format(time.RFC3339))
+		if i < len(posts) - 1 {
+			values += ", "
+		}
 	}
 
 	query = fmt.Sprintf(`insert into main.post (forum_id, forum, user_id, author, thread_id, 
-			thread, message, parent, is_edited, created) values %v`, values)
+			thread, message, parent, is_edited, created) values %v returning post_id`, values)
 
 	_, err := p.db.Query(&posts, query)
 	if err != nil {
@@ -126,24 +143,54 @@ func (p *pgStorage) CreatePostsByID(ID int, posts models.ListPosts) (*models.Lis
 	return &posts, nil
 }
 
-func (p *pgStorage) CreatePostsBySlag(Slug string, posts models.ListPosts) (*models.ListPosts, error) {
-	panic("implement me")
+
+func (p *pgStorage) GetPostsThreadByID(ID int) ([]models.Post, error) {
+	var posts []models.Post
+	_, err := p.db.Query(&posts, `
+			select post_id, forum, author, thread_id, message, parent, is_edited, created 
+			from main.post where post.thread_id = ?`, ID)
+	if err != nil {
+		return nil, err
+	}
+	return posts, nil
 }
 
-
-
-func (p *pgStorage) CreateThread(threads models.ListThread) (*models.Thread, error) {
-	panic("implement me")
+func (p *pgStorage) GetPostsThreadBySlug(slug string) ([]models.Post, error) {
+	var posts []models.Post
+	_, err := p.db.Query(&posts, `
+			select post_id, post.forum, author, post.thread_id, post.message, parent, is_edited, created 
+			from main.post 			
+			join main.thread on thread.thread_id = post.thread_id
+			where thread.slug = ?`, slug)
+	if err != nil {
+		return nil, err
+	}
+	return posts, nil
 }
 
-func (p *pgStorage) UpdateThread(thread models.Thread) (*models.Thread, error) {
-	panic("implement me")
+func (p *pgStorage) VoteOnThreadByID(ID int, vote models.Vote) (*models.Thread, error) {
+	_, err := p.db.Query(&vote, `
+		insert into main.vote (user_id, thread_id, voice)
+		values ((select user_id from main.users where nickname = ?), ?, '?')`,
+		vote.Nickname, ID, vote.Voice)
+	if err != nil {
+		return nil, err
+	}
+
+	return p.GetThreadDetailsByID(ID)
 }
 
-func (p *pgStorage) GetPostsThread(params models.ThreadParams) ([]models.Thread, error) {
-	panic("implement me")
-}
+func (p *pgStorage) VoteOnThreadBySlug(slug string, vote models.Vote) (*models.Thread, error) {
 
-func (p *pgStorage) VoteOnThread(vote models.Vote) (*models.Thread, error) {
-	panic("implement me")
+	_, err := p.db.Query(&vote, `
+		insert into main.vote (user_id, thread_id, voice) 
+		values ((select user_id from main.users where nickname = ?), 
+				(select thread_id from main.thread where slug = ?), 
+				'?')`,
+		vote.Nickname, slug, vote.Voice)
+	if err != nil {
+		return nil, err
+	}
+
+	return p.GetThreadDetailsBySlug(slug)
 }

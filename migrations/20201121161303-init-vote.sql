@@ -15,6 +15,6 @@ create table vote
 );
 
 -- +migrate Down
-drop type voice_types;
+drop type if exists voice_types;
 drop table main.vote;
 

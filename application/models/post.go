@@ -34,7 +34,7 @@ type Post struct {
 
 	// Идентификатор ветви (id) обсуждения данного сообещния.
 	// Read Only: true
-	ThreadID int `json:"thread"`
+	ThreadID int `json:"thread" pg:"thread_id"`
 
 	ForumID    int    `json:"-"`
 	UserID     int    `json:"-"`

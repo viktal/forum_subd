@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/go-park-mail-ru/2020_2_MVVM.git/application/models"
+	"forum/application/models"
 )
 
 type UseCase interface {

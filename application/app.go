@@ -17,9 +17,17 @@ import (
 	ThreadRepository "forum/application/thread/repository"
 	ThreadUseCase "forum/application/thread/usecase"
 
+	PostHandler "forum/application/post/delivery/http"
+	PostRepository "forum/application/post/repository"
+	PostUseCase "forum/application/post/usecase"
+
 	ForumHandler "forum/application/forum/delivery/http"
 	ForumRepository "forum/application/forum/repository"
 	ForumUseCase "forum/application/forum/usecase"
+
+	ServiceHandler "forum/application/service/delivery/http"
+	ServiceRepository "forum/application/service/repository"
+	ServiceUseCase "forum/application/service/usecase"
 
 	"github.com/go-pg/pg/v9"
 	"net/http"
@@ -120,18 +128,18 @@ func NewApp(config Config) *App {
 	ThreadRep := ThreadRepository.NewPgRepository(db)
 	ThreadCase := ThreadUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, ThreadRep)
 	ThreadHandler.NewRest(api.Group("/thread"), ThreadCase)
-	//
-	//ServiceRep := ServiceRepository.NewPgRepository(db)
-	//ServiceCase := ServiceUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, ServiceRep)
-	//ServiceHandler.NewRest(api.Group("/thread"), ServiceCase)
-	//
-	//PostRep := PostRepository.NewPgRepository(db)
-	//PostCase := PostUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, PostRep)
-	//PostHandler.NewRest(api.Group("/post"), PostCase)
-	//
+
+	ServiceRep := ServiceRepository.NewPgRepository(db)
+	ServiceCase := ServiceUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, ServiceRep)
+	ServiceHandler.NewRest(api.Group("/service"), ServiceCase)
+
 	ForumRep := ForumRepository.NewPgRepository(db)
 	ForumCase := ForumUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, ForumRep, UserRep)
 	ForumHandler.NewRest(api.Group("/forum"), ForumCase)
+
+	PostRep := PostRepository.NewPgRepository(db)
+	PostCase := PostUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, PostRep, UserRep, ForumRep, ThreadRep)
+	PostHandler.NewRest(api.Group("/post"), PostCase)
 
 
 	app := App{

@@ -7,6 +7,7 @@ import (
 	"github.com/go-pg/pg/v9"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type PGRepository struct {
@@ -58,6 +59,23 @@ func (p *PGRepository) GetForumBySlug(slug string) (*models.Forum, error) {
 				join main.thread t on forum.forum_id = t.forum_id
 				where main.forum.slug = '%s'
 				group by u.user_id, forum.forum_id; `, slug)
+	_, err := p.db.Query(&forum, query)
+	if err != nil {
+		return nil, err
+	}
+	return &forum, nil
+}
+
+
+func (p *PGRepository) GetForumByID(ID int) (*models.Forum, error) {
+	var forum models.Forum
+	query := fmt.Sprintf(`select main.forum.title, u.nickname as user, count(t.thread_id) threads, count(p.post_id) posts
+				from main.forum
+				join main.users u on u.user_id = forum.user_id
+				join main.post p on forum.forum_id = p.forum_id
+				join main.thread t on forum.forum_id = t.forum_id
+				where main.forum.forum_id = '%d'
+				group by u.user_id, forum.forum_id; `, ID)
 	_, err := p.db.Query(&forum, query)
 	if err != nil {
 		return nil, err
@@ -135,11 +153,13 @@ func (p *PGRepository) CreateThread(slugForum string, thread models.Thread) (*mo
 	if err != nil {
 		return nil, err
 	}
+	thread.CreateDate = time.Now()
 
 	query := fmt.Sprintf(`insert into main.thread 
-		(forum_id, forum, user_id, nickname, title, message, votes) values 
-		('%s', '%s', '%s', '%s', '%s', '%s', '%v') returning thread_id`,
-		ForumID, thread.Forum, UserID, thread.Nickname, thread.Title, thread.Message, thread.Votes)
+		(forum_id, forum, user_id, nickname, title, message, slug, create_date, votes) values 
+		('%s', '%s', '%s', '%s', '%s', '%s','%s', '%s', '%v') returning thread_id`,
+		ForumID, thread.Forum, UserID, thread.Nickname, thread.Title, thread.Message,
+		thread.Slug, thread.CreateDate.Format(time.RFC3339), thread.Votes)
 	_, err = p.db.Query(&thread, query)
 	if err != nil {
 		return nil, err

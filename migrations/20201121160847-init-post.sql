@@ -7,13 +7,13 @@ create table post
         constraint post_pkey primary key,
     forum_id SERIAL not null
             references forum(forum_id),
-    forum text references forum(slug),
+    forum text,
     user_id SERIAL not null
             references users(user_id),
-    author text references users(nickname),
+    author text,
     thread_id SERIAL not null
         references thread(thread_id),
-    thread text references thread(slug),
+    thread text,
     message text,
     parent numeric,
     is_edited bool default false,

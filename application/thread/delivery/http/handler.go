@@ -24,11 +24,11 @@ func NewRest(router *gin.RouterGroup, useCase thread.UseCase) *UserHandler {
 }
 
 func (u *UserHandler) routes(router *gin.RouterGroup) {
-	router.POST("/:slug_or_id/create", u.CreatePost)
+	router.POST("/:slug_or_id/create", u.CreatePost) //+
 	router.GET("/:slug_or_id/details", u.GetThreadDetails) //+
 	router.POST("/:slug_or_id/details", u.UpdateThread) //+
-	router.GET("/:slug_or_id/posts", u.GetPostsThread)
-	router.GET("/:slug_or_id/vote", u.VoteOnThread)
+	router.GET("/:slug_or_id/posts", u.GetPostsThread) //+
+	router.POST("/:slug_or_id/vote", u.VoteOnThread)
 }
 
 func (u *UserHandler) GetThreadDetails(ctx *gin.Context) {
@@ -47,7 +47,6 @@ func (u *UserHandler) CreatePost(ctx *gin.Context) {
 	slugOrID := ctx.Param("slug_or_id")
 
 	var posts models.ListPosts
-	//var newThreads models.ListThread
 	if err := ctx.ShouldBindJSON(&posts); err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
@@ -87,35 +86,11 @@ func (u *UserHandler) UpdateThread(ctx *gin.Context) {
 }
 
 func (u *UserHandler) GetPostsThread(ctx *gin.Context) {
-	var req Request
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, common.RespError{Err: common.EmptyFieldErr})
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
-	if (Request{} == req) {
-		ctx.JSON(http.StatusBadRequest, common.RespError{Err: common.UriErrorThread})
-		return
-	}
+	slugOrID := ctx.Param("slug_or_id")
 
-	var query models.ThreadParams
-	if err := ctx.ShouldBindQuery(&query); err != nil {
-		ctx.JSON(http.StatusBadRequest, common.RespError{Err: common.EmptyFieldErr})
-		return
-	}
-	if req.Slug != "" {
-		query.SlugOrID = req.Slug
-	} else if req.ID != 0 {
-		query.SlugOrID = string(req.ID)
-	}
-	//if err := common.ReqValidation(&req); err != nil {
-	//	ctx.JSON(http.StatusBadRequest, common.RespError{Err: err.Error()})
-	//	return
-	//}
-
-	threads, err := u.UserUseCase.GetPostsThread(query)
+	threads, err := u.UserUseCase.GetPostsThread(slugOrID)
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, common.RespError{Err: common.DataBaseErr})
+		ctx.JSON(http.StatusInternalServerError, err)
 		return
 	}
 
@@ -123,26 +98,12 @@ func (u *UserHandler) GetPostsThread(ctx *gin.Context) {
 }
 
 func (u *UserHandler) VoteOnThread(ctx *gin.Context) {
-	var req Request
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, common.RespError{Err: common.EmptyFieldErr})
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
-	if (Request{} == req) {
-		ctx.JSON(http.StatusBadRequest, common.RespError{Err: common.UriErrorThread})
-		return
-	}
+	slugOrID := ctx.Param("slug_or_id")
 
 	var vote models.Vote
 	if err := ctx.ShouldBindJSON(&vote); err != nil {
-		ctx.JSON(http.StatusBadRequest, common.RespError{Err: common.EmptyFieldErr})
+		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
-	}
-	if req.Slug != "" {
-		vote.SlugOrID = req.Slug
-	} else if req.ID != 0 {
-		vote.SlugOrID = string(req.ID)
 	}
 
 	//if err := common.ReqValidation(&req); err != nil {
@@ -150,7 +111,12 @@ func (u *UserHandler) VoteOnThread(ctx *gin.Context) {
 	//	return
 	//}
 
-	threads, err := u.UserUseCase.VoteOnThread(vote)
+	if vote.Voice != 1 && vote.Voice != -1 {
+		ctx.JSON(http.StatusInternalServerError, common.RespError{Err: "Wrong voice"})
+		return
+	}
+
+	threads, err := u.UserUseCase.VoteOnThread(slugOrID, vote)
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, common.RespError{Err: common.DataBaseErr})
 		return

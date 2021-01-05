@@ -9,10 +9,11 @@ type Repository interface {
 	UpdateThreadByID(ID int, thread models.Thread) (*models.Thread, error)
 	UpdateThreadBySlug(slug string, thread models.Thread) (*models.Thread, error)
 
-	CreatePostsByID(ID int, posts models.ListPosts) (*models.ListPosts, error)
-	CreatePostsBySlag(Slug string, posts models.ListPosts) (*models.ListPosts, error)
+	CreatePosts(slugOrID string, byType string, posts models.ListPosts) (*models.ListPosts, error)
 
-	CreateThread(threads models.ListThread) (*models.Thread, error)
-	GetPostsThread(params models.ThreadParams) ([]models.Thread, error)
-	VoteOnThread(vote models.Vote) (*models.Thread, error)
+	GetPostsThreadByID(ID int) ([]models.Post, error)
+	GetPostsThreadBySlug(slug string) ([]models.Post, error)
+
+	VoteOnThreadByID(ID int, vote models.Vote) (*models.Thread, error)
+	VoteOnThreadBySlug(slug string, vote models.Vote) (*models.Thread, error)
 }
