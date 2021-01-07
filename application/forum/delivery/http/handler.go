@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"forum/application/forum"
 	"forum/application/models"
 	"github.com/gin-gonic/gin"
@@ -44,7 +45,7 @@ func (r *ForumHandler) BuildPath(ctx *gin.Context) {
 }
 
 func (r *ForumHandler) CreateForum(ctx *gin.Context) {
-	var forum models.Forum
+	var forum models.ForumCreate
 	if err := ctx.ShouldBindJSON(&forum); err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
@@ -52,11 +53,19 @@ func (r *ForumHandler) CreateForum(ctx *gin.Context) {
 
 	result, err := r.UseCaseForum.CreateForum(forum)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
-		return
+		if err.Code() == 404 {
+			ctx.JSON(http.StatusNotFound, err)
+			return
+		} else if err.Code() == 409 {
+			ctx.JSON(http.StatusConflict, result)
+			return
+		} else {
+			ctx.JSON(http.StatusInternalServerError, err)
+			return
+		}
 	}
 
-	ctx.JSON(http.StatusOK, result)
+	ctx.JSON(http.StatusCreated, result)
 }
 func (r *ForumHandler) CreateThread(ctx *gin.Context, slugForum string) {
 	var template models.Thread
@@ -71,11 +80,19 @@ func (r *ForumHandler) CreateThread(ctx *gin.Context, slugForum string) {
 
 	result, err := r.UseCaseForum.CreateThread(slugForum, template)
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
-		return
+		if err.Code() == 404 {
+			ctx.JSON(http.StatusNotFound, err)
+			return
+		} else if err.Code() == 409 {
+			ctx.JSON(http.StatusConflict, result)
+			return
+		} else {
+			ctx.JSON(http.StatusInternalServerError, err)
+			return
+		}
 	}
 
-	ctx.JSON(http.StatusOK, result)
+	ctx.JSON(http.StatusCreated, result)
 }
 
 func (r *ForumHandler) GetForumBySlug(ctx *gin.Context) {
@@ -90,6 +107,10 @@ func (r *ForumHandler) GetForumBySlug(ctx *gin.Context) {
 	result, err := r.UseCaseForum.GetForumBySlug(req.Slug)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+	if result.ForumID == 0 {
+		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found."))
 		return
 	}
 
@@ -107,6 +128,11 @@ func (r *ForumHandler) GetAllForumTreads(ctx *gin.Context) {
 	result, err := r.UseCaseForum.GetAllForumTreads(slugForum, params)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	if *result == nil {
+		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found."))
 		return
 	}
 

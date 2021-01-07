@@ -101,7 +101,6 @@ func NewApp(config Config) *App {
 	r.NoRoute(func(c *gin.Context) {
 		c.AbortWithStatus(http.StatusNotFound)
 	})
-	r.GET("/health", healthCheck())
 
 	if config.DocPath != "" {
 		r.Static("/doc/api", config.DocPath)
@@ -154,9 +153,6 @@ func NewApp(config Config) *App {
 }
 
 func (a *App) Run() {
-	a.route.GET("/readiness", func(c *gin.Context) {
-		c.Status(http.StatusOK)
-	})
 
 	srv := &http.Server{
 		Addr:    a.config.Listen,
@@ -191,10 +187,4 @@ func (a *App) Run() {
 func (a *App) Close() {
 	a.db.Close()
 	a.doneChan <- true
-}
-
-func healthCheck() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		c.String(http.StatusOK, "Ok")
-	}
 }

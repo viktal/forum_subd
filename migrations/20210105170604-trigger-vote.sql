@@ -14,6 +14,12 @@ begin
         else
             update main.thread set votes = votes - 1 where thread_id = new.thread_id;
         end if;
+    elseif TG_OP = 'UPDATE' then
+        if new.voice = '1' then
+            update main.thread set votes = votes + 2 where thread_id = new.thread_id;
+        else
+            update main.thread set votes = votes - 2 where thread_id = new.thread_id;
+        end if;
     end if;
     return new;
 end

@@ -2,9 +2,11 @@ package repository
 
 import (
 	"fmt"
+	"forum/application/common"
 	"forum/application/models"
 	"forum/application/user"
 	"github.com/go-pg/pg/v9"
+	"strings"
 )
 
 func NewPgRepository(db *pg.DB) user.Repository {
@@ -30,7 +32,7 @@ func (p *pgStorage) GetUserByID(ID int) (*models.User, error) {
 func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 	var user models.User
 	query := fmt.Sprintf(`select * from main.users
-							where nickname = '%s'`, nickname)
+							where nickname ilike '%s'`, nickname)
 
 	_, err := p.db.Query(&user, query)
 	if err != nil || user.Nickname == ""{
@@ -40,7 +42,7 @@ func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 	return &user, nil
 }
 
-func (p *pgStorage) CreateUser(user models.User) ([]models.User, error) {
+func (p *pgStorage) CreateUser(user models.User) ([]models.User, *common.Err) {
 	var listUsers []models.User
 	//INSERT INTO ....
 	//VALUES ......
@@ -48,39 +50,56 @@ func (p *pgStorage) CreateUser(user models.User) ([]models.User, error) {
 
 	query := fmt.Sprintf(`insert into main.users
 					(nickname, email, fullname, about)
-					values ('%s', '%s', '%s', '%s') 
-				ON CONFLICT DO NOTHING RETURNING nickname, email, fullname, about;`,
+					values ('%s', '%s', '%s', '%s')`,
 					user.Nickname, user.Email, user.Fullname, user.About)
 
 	//TODO: Пользователь уже присутсвует в базе данных. Возвращает данные ранее созданных пользователей с тем же nickname-ом иои email-ом.
 
-	oldUser, err := p.db.Query(&user, query)
+	_, err := p.db.Query(&user, query)
 	if err != nil {
-		fmt.Print(oldUser)
-		return nil, err
+		if strings.HasPrefix(err.Error(), "ERROR #23505") {
+			query := fmt.Sprintf(`
+				select * from main.users 
+				where nickname ilike '%s' or email ilike '%s'`, user.Nickname, user.Email)
+			_, err1 := p.db.Query(&listUsers, query)
+			if err1 != nil {
+				newErr := common.NewErr(500, err1.Error())
+				return nil, &newErr
+			} else {
+				newErr := common.NewErr(409, err.Error())
+				return listUsers, &newErr
+			}
+		} else {
+			newErr := common.NewErr(500, err.Error())
+			return nil, &newErr
+		}
 	}
-	//_, errInsert := p.db.Model(&user).Returning("*").Insert()
-	//if errInsert != nil {
-	//	if isExist, err := p.db.Model(&user).Exists(); err != nil {
-	//		errInsert = fmt.Errorf("error in inserting user with name: %s : error: %w", user.Nickname, err)
-	//	} else if isExist {
-	//		errInsert = errors.New("user already exists")
-	//	}
-	//	return nil, errInsert
-	//}
 	listUsers = append(listUsers, user)
 	return listUsers, nil
 }
 
-func (p *pgStorage) UpdateUser(userNew models.User) (*models.User, error) {
-	query := fmt.Sprintf(`update main.users
-				set email = '%s', fullname = '%s', about = '%s'
-				where nickname = '%s'`,
-				userNew.Email, userNew.Fullname, userNew.About, userNew.Nickname)
-
-	_, err := p.db.Query(&userNew, query)
-	if err != nil {
-		return nil, err
+func (p *pgStorage) UpdateUser(userNew models.UserUpdate) (*models.User, *common.Err) {
+	var user models.User
+	_, err := p.db.Query(&user, `update main.users
+				set 
+				email = COALESCE(?, email),
+				fullname = COALESCE(?, fullname), 
+				about = COALESCE(?, about)
+				where nickname = ?
+				returning *`,
+		userNew.Email, userNew.Fullname, userNew.About, userNew.Nickname)
+	if user.UserID == 0 {
+		newErr := common.NewErr(409, "Already exist")
+		return nil, &newErr
 	}
-	return &userNew, nil
+
+	if err != nil {
+		if strings.HasPrefix(err.Error(), "ERROR #23505"){
+			newErr := common.NewErr(409, err.Error())
+			return nil, &newErr
+		}
+		newErr := common.NewErr(404, err.Error())
+		return nil, &newErr
+	}
+	return &user, nil
 }

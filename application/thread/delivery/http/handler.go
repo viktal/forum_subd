@@ -52,14 +52,19 @@ func (u *UserHandler) CreatePost(ctx *gin.Context) {
 		return
 	}
 
-	newPosts, err := u.UserUseCase.CreatePosts(slugOrID, posts)
+	if len(posts) == 0 {
+		ctx.JSON(http.StatusCreated, posts)
+		return
+	}
+
+		newPosts, err := u.UserUseCase.CreatePosts(slugOrID, posts)
 
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
 		return
 	}
 
-	ctx.JSON(http.StatusOK, newPosts)
+	ctx.JSON(http.StatusCreated, newPosts)
 }
 
 func (u *UserHandler) UpdateThread(ctx *gin.Context) {

@@ -1,11 +1,12 @@
 package user
 
 import (
+	"forum/application/common"
 	"forum/application/models"
 )
 
 type UseCase interface {
-	GetUserProfile(nickname string) (*models.UserRequest, error)
-	CreateUser(user models.User) ([]models.UserRequest, error)
-	UpdateUser(user models.User) (*models.UserRequest, error)
+	GetUserProfile(nickname string) (*models.User, error)
+	CreateUser(user models.User) ([]models.User, *common.Err)
+	UpdateUser(user models.UserUpdate) (*models.User, *common.Err)
 }

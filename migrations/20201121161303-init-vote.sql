@@ -14,7 +14,11 @@ create table vote
     voice voice_types
 );
 
+create unique index uniq_vote on main.vote (user_id, thread_id);
+
 -- +migrate Down
 drop type if exists voice_types;
 drop table main.vote;
+drop index if exists uniq_vote;
+
 

@@ -1,11 +1,10 @@
 package usecase
 
 import (
-	"fmt"
-	logger "github.com/apsdehal/go-logger"
+	"forum/application/common"
 	"forum/application/models"
 	"forum/application/user"
-	"github.com/ulule/deepcopier"
+	logger "github.com/apsdehal/go-logger"
 )
 
 type UseCase struct {
@@ -23,55 +22,22 @@ func NewUseCase(iLog *logger.Logger, errLog *logger.Logger,
 	}
 }
 
-func (u *UseCase) GetUserProfile(id string) (*models.UserRequest, error) {
-	userById, err := u.repos.GetUserByNickname(id)
-	if err != nil {
-		return nil, err
-	}
-
-	req := &models.UserRequest{}
-	err = deepcopier.Copy(userById).To(req)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
+func (u *UseCase) GetUserProfile(id string) (*models.User, error) {
+	return u.repos.GetUserByNickname(id)
 }
 
-func (u *UseCase) CreateUser(user models.User) ([]models.UserRequest, error) {
-	userNew, err := u.repos.CreateUser(user)
-	if err != nil {
-		return nil, err
-	}
-
-	var listReq []models.UserRequest
-	for i := range userNew {
-		req := &models.UserRequest{}
-		err = deepcopier.Copy(userNew[i]).To(req)
-		if err != nil {
-			return nil, err
-		}
-		listReq = append(listReq, *req)
-	}
-	return listReq, nil
+func (u *UseCase) CreateUser(user models.User) ([]models.User, *common.Err) {
+	return u.repos.CreateUser(user)
 }
 
-func (u *UseCase) UpdateUser(user models.User) (*models.UserRequest, error) {
-	_, err := u.repos.GetUserByNickname(user.Nickname)
+func (u *UseCase) UpdateUser(user models.UserUpdate) (*models.User, *common.Err) {
+	us, err := u.repos.GetUserByNickname(user.Nickname)
 	if err != nil {
-		err = fmt.Errorf("%w, code 404", err)
-		return nil, err
+		err := common.NewErr(404, "Not Found")
+		return nil, &err
 	}
-	newUser, err := u.repos.UpdateUser(user)
-	if err != nil {
-		return nil, err
+	if user.Email == nil && user.Fullname == nil && user.About == nil {
+		return us, nil
 	}
-
-	req := &models.UserRequest{}
-	err = deepcopier.Copy(newUser).To(req)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
+	return u.repos.UpdateUser(user)
 }

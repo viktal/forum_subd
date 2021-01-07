@@ -20,9 +20,8 @@ type pgStorage struct {
 
 func (p *pgStorage) GetThreadDetailsByID(ID int) (*models.Thread, error) {
 	var thread models.Thread
-	query := fmt.Sprintf(`select  main.thread.*, 
-		u.nickname, 
-		main.forum.title as forum
+	query := fmt.Sprintf(`select  main.thread.nickname, main.thread.create_date, main.thread.thread_id, 
+			main.thread.message, main.thread.slug, main.thread.title, main.forum.slug as forum, main.thread.votes
 			from main.thread
 			join main.forum  on forum.forum_id = main.thread.forum_id
 			join main.users u on u.user_id = forum.user_id
@@ -36,12 +35,11 @@ func (p *pgStorage) GetThreadDetailsByID(ID int) (*models.Thread, error) {
 
 func (p *pgStorage) GetThreadDetailsBySlug(slug string) (*models.Thread, error) {
 	var thread models.Thread
-	query := fmt.Sprintf(`select  main.thread.*, 
-		u.nickname as author, 
-		main.forum.title as forum
+	query := fmt.Sprintf(`select  main.thread.nickname, main.thread.create_date, main.thread.thread_id, 
+			main.thread.message, main.thread.slug, main.thread.title, main.forum.slug as forum, main.thread.votes
 			from main.thread
 			join main.forum  on forum.forum_id = main.thread.forum_id
-			join main.users u on u.user_id = forum.user_id
+			join main.users u on u.user_id = thread.user_id
 			where main.thread.slug = '%v'`, slug)
 	_, err := p.db.Query(&thread, query)
 	if err != nil {
@@ -110,7 +108,7 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 		}
 
 		posts[i].Created = time.Now()
-		_, err := p.db.Query(&posts[i].ForumID, "select forum.forum_id " +
+		_, err := p.db.Query(&posts[i], "select forum.forum_id, forum.slug as forum " +
 			"from main.forum " +
 			"join main.thread on forum.forum_id = thread.forum_id " +
 			"where thread.thread_id = ?", posts[i].ThreadID)
@@ -169,10 +167,17 @@ func (p *pgStorage) GetPostsThreadBySlug(slug string) ([]models.Post, error) {
 }
 
 func (p *pgStorage) VoteOnThreadByID(ID int, vote models.Vote) (*models.Thread, error) {
+//https://stackoverflow.com/questions/6677517/update-if-different-changed
+	//_, err := p.db.Query(&vote, `
+	//	select * from main.vote`,
+	//	vote.Nickname, ID, vote.Voice)
+
 	_, err := p.db.Query(&vote, `
 		insert into main.vote (user_id, thread_id, voice)
-		values ((select user_id from main.users where nickname = ?), ?, '?')`,
-		vote.Nickname, ID, vote.Voice)
+		values ((select user_id from main.users where nickname ilike ?), ?, '?')
+		on conflict (user_id, thread_id) do update set voice = '?' 
+		where vote.voice <> '?' returning *`,
+		vote.Nickname, ID, vote.Voice, vote.Voice, vote.Voice)
 	if err != nil {
 		return nil, err
 	}
@@ -181,13 +186,13 @@ func (p *pgStorage) VoteOnThreadByID(ID int, vote models.Vote) (*models.Thread, 
 }
 
 func (p *pgStorage) VoteOnThreadBySlug(slug string, vote models.Vote) (*models.Thread, error) {
-
-	_, err := p.db.Query(&vote, `
+	query := fmt.Sprintf(`
 		insert into main.vote (user_id, thread_id, voice) 
-		values ((select user_id from main.users where nickname = ?), 
-				(select thread_id from main.thread where slug = ?), 
+		values ((select user_id from main.users where nickname ilike '%s'), 
+				(select thread_id from main.thread where slug ilike '%s'), 
 				'?')`,
-		vote.Nickname, slug, vote.Voice)
+		vote.Nickname, slug)
+	_, err := p.db.Query(&vote, query, vote.Voice)
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"forum/application/common"
 	"forum/application/forum"
 	"forum/application/models"
 	"forum/application/user"
@@ -27,17 +28,19 @@ func NewUseCase(infoLogger *logger.Logger,
 	return &usecase
 }
 
-func (u *UseCase) CreateForum(forum models.Forum) (*models.Forum, error) {
+func (u *UseCase) CreateForum(forum models.ForumCreate) (*models.ForumCreate, *common.Err) {
 	user, err := u.strgUser.GetUserByNickname(forum.User)
 	if err != nil {
-		return nil, err
+		newErr := common.NewErr(404, err.Error())
+		return nil, &newErr
 	}
 	forum.UserID = user.UserID
+	forum.User = user.Nickname
 
 	return u.strg.CreateForum(forum)
 }
 
-func (u *UseCase) CreateThread(slugForum string, thread models.Thread) (*models.Thread, error) {
+func (u *UseCase) CreateThread(slugForum string, thread models.Thread) (*models.Thread, *common.Err) {
 	return u.strg.CreateThread(slugForum, thread)
 }
 
@@ -45,7 +48,7 @@ func (u *UseCase) GetForumBySlug(slug string) (*models.Forum, error) {
 	return u.strg.GetForumBySlug(slug)
 }
 
-func (u *UseCase) GetAllForumTreads(slug string, params models.ForumParams) ([]models.Thread, error) {
+func (u *UseCase) GetAllForumTreads(slug string, params models.ForumParams) (*[]models.Thread, error) {
 	return u.strg.GetAllForumTreads(slug, params)
 }
 

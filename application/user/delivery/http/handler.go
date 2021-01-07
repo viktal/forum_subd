@@ -6,8 +6,6 @@ import (
 	"forum/application/user"
 	"github.com/gin-gonic/gin"
 	"net/http"
-	"strconv"
-	"strings"
 )
 
 type UserHandler struct {
@@ -66,10 +64,15 @@ func (u *UserHandler) CreateUser(ctx *gin.Context) {
 
 	userNew, err := u.UserUseCase.CreateUser(user)
 	if err != nil {
-		ctx.JSON(http.StatusConflict, userNew)
+		if err.Code() == 409 {
+			ctx.JSON(http.StatusConflict, userNew)
+			return
+		}
+		ctx.JSON(http.StatusInternalServerError, err)
 		return
+
 	}
-	ctx.JSON(http.StatusOK, userNew[0])
+	ctx.JSON(http.StatusCreated, userNew[0])
 }
 
 func (u *UserHandler) UpdateUser(ctx *gin.Context) {
@@ -81,7 +84,7 @@ func (u *UserHandler) UpdateUser(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	var user models.User
+	var user models.UserUpdate
 	user.Nickname = req.Nickname
 	if err := ctx.ShouldBindJSON(&user); err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
@@ -89,15 +92,17 @@ func (u *UserHandler) UpdateUser(ctx *gin.Context) {
 	}
 	userUpdate, err := u.UserUseCase.UpdateUser(user)
 	if err != nil {
-		if strings.HasSuffix(err.Error(), strconv.Itoa(http.StatusNotFound)) {
+		if err.Code() == 404 {
 			ctx.JSON(http.StatusNotFound, err)
 			return
-		} else if strings.HasSuffix(err.Error(), strconv.Itoa(http.StatusConflict)) {
+		} else if err.Code() == 409 {
 			ctx.JSON(http.StatusConflict, err)
 			return
+		} else {
+			ctx.AbortWithError(http.StatusBadRequest, err)
+			return
 		}
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
+
 	}
 	ctx.JSON(http.StatusOK, userUpdate)
 }

@@ -13,10 +13,13 @@ create table thread
     nickname text,
     title text,
     message text,
-    slug text unique,
+    slug citext,
     create_date timestamp,
     votes numeric default 0
 );
 
+create unique index uniq_slug on main.thread (slug) where slug is not null;
+
 -- +migrate Down
 drop table main.thread;
+drop index if exists uniq_slug;
