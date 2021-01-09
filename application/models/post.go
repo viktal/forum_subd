@@ -3,6 +3,7 @@ package models
 import "time"
 
 type Post struct {
+	tableName struct{} `pg:"post"`
 	// Автор, написавший данное сообщение.
 	// Required: true
 	Author string `json:"author"`
@@ -35,6 +36,7 @@ type Post struct {
 	// Идентификатор ветви (id) обсуждения данного сообещния.
 	// Read Only: true
 	ThreadID int `json:"thread" pg:"thread_id"`
+	Thread string `json:"-"`
 
 	ForumID    int    `json:"-"`
 	UserID     int    `json:"-"`

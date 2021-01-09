@@ -17,7 +17,7 @@ create table post
     message text,
     parent numeric,
     is_edited bool default false,
-    created timestamp
+    created timestamp WITH TIME ZONE
 );
 
 -- +migrate Down

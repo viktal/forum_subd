@@ -73,10 +73,6 @@ func (r *ForumHandler) CreateThread(ctx *gin.Context, slugForum string) {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-	//if err := common.ReqValidation(template); err != nil {
-	//	ctx.JSON(http.StatusBadRequest, common.RespError{Err: err.Error()})
-	//	return
-	//}
 
 	result, err := r.UseCaseForum.CreateThread(slugForum, template)
 	if err != nil {

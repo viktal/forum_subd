@@ -10,7 +10,9 @@ create table forum
     user_id SERIAL not null
             references users(user_id),
     author text,
-    title text not null
+    title text not null,
+    threads numeric default 0,
+    posts numeric default 0
 
 );
 -- +migrate Down

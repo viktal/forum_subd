@@ -63,7 +63,6 @@ func (u UseCase) GetPostDetails(ID int, related []string) (*models.PostFull, err
 				return nil, err
 			}
 			postFull.Thread = thread
-
 		}
 
 	}

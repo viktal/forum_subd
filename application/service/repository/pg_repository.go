@@ -21,17 +21,11 @@ func (p pgStorage) GetStatusDB() (*models.Status, error) {
 		return nil, err
 	}
 
-	_, err = p.db.Query(&status, "select count(main.thread.thread_id) as thread from main.thread")
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = p.db.Query(&status, "select count(main.forum.forum_id) as forum from main.forum")
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = p.db.Query(&status, "select count(main.post.post_id) as post from main.post")
+	_, err = p.db.Query(&status, "" +
+		"select count( * ) as forum, " +
+		"sum( main.forum.threads) as thread, " +
+		"sum( main.forum.posts) as post " +
+		"from main.forum")
 	if err != nil {
 		return nil, err
 	}
@@ -48,4 +42,3 @@ func (p pgStorage) ClearDB() error {
 		"delete from main.users;")
 	return err
 }
-

@@ -32,10 +32,10 @@ func (p *pgStorage) GetUserByID(ID int) (*models.User, error) {
 func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 	var user models.User
 	query := fmt.Sprintf(`select * from main.users
-							where nickname ilike '%s'`, nickname)
+								 where lower(nickname) = lower('%s')`, nickname)
 
 	_, err := p.db.Query(&user, query)
-	if err != nil || user.Nickname == ""{
+	if err != nil || user.Nickname == "" {
 		err = fmt.Errorf("%w, code 404", err)
 		return nil, err
 	}
@@ -44,23 +44,18 @@ func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 
 func (p *pgStorage) CreateUser(user models.User) ([]models.User, *common.Err) {
 	var listUsers []models.User
-	//INSERT INTO ....
-	//VALUES ......
-	//ON CONFLICT DO NOTHING RETURNING email, nickname;
 
 	query := fmt.Sprintf(`insert into main.users
 					(nickname, email, fullname, about)
 					values ('%s', '%s', '%s', '%s')`,
 					user.Nickname, user.Email, user.Fullname, user.About)
 
-	//TODO: Пользователь уже присутсвует в базе данных. Возвращает данные ранее созданных пользователей с тем же nickname-ом иои email-ом.
-
 	_, err := p.db.Query(&user, query)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "ERROR #23505") {
 			query := fmt.Sprintf(`
 				select * from main.users 
-				where nickname ilike '%s' or email ilike '%s'`, user.Nickname, user.Email)
+				where lower(nickname) = lower('%s') or lower(email) = lower('%s')`, user.Nickname, user.Email)
 			_, err1 := p.db.Query(&listUsers, query)
 			if err1 != nil {
 				newErr := common.NewErr(500, err1.Error())
@@ -85,7 +80,7 @@ func (p *pgStorage) UpdateUser(userNew models.UserUpdate) (*models.User, *common
 				email = COALESCE(?, email),
 				fullname = COALESCE(?, fullname), 
 				about = COALESCE(?, about)
-				where nickname = ?
+				where lower(nickname) = lower(?)
 				returning *`,
 		userNew.Email, userNew.Fullname, userNew.About, userNew.Nickname)
 	if user.UserID == 0 {

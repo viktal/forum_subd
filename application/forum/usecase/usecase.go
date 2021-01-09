@@ -29,13 +29,13 @@ func NewUseCase(infoLogger *logger.Logger,
 }
 
 func (u *UseCase) CreateForum(forum models.ForumCreate) (*models.ForumCreate, *common.Err) {
-	user, err := u.strgUser.GetUserByNickname(forum.User)
-	if err != nil {
-		newErr := common.NewErr(404, err.Error())
-		return nil, &newErr
-	}
-	forum.UserID = user.UserID
-	forum.User = user.Nickname
+	//user, err := u.strgUser.GetUserByNickname(forum.User)
+	//if err != nil {
+	//	newErr := common.NewErr(404, err.Error())
+	//	return nil, &newErr
+	//}
+	//forum.UserID = user.UserID
+	//forum.User = user.Nickname
 
 	return u.strg.CreateForum(forum)
 }

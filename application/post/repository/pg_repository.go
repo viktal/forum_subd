@@ -23,6 +23,7 @@ func (p pgStorage) GetPostByID(ID int) (*models.Post, error) {
 			from main.post where post.post_id = '%d'`, ID)
 
 	_, err := p.db.Query(&post, query)
+	//fmt.Println(post.Created.Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, err
 	}

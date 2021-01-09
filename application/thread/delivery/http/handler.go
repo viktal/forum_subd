@@ -25,10 +25,10 @@ func NewRest(router *gin.RouterGroup, useCase thread.UseCase) *UserHandler {
 }
 
 func (u *UserHandler) routes(router *gin.RouterGroup) {
-	router.POST("/:slug_or_id/create", u.CreatePost) //+
-	router.GET("/:slug_or_id/details", u.GetThreadDetails) //+
-	router.POST("/:slug_or_id/details", u.UpdateThread) //+
-	router.GET("/:slug_or_id/posts", u.GetPostsThread) //+
+	router.POST("/:slug_or_id/create", u.CreatePost)
+	router.GET("/:slug_or_id/details", u.GetThreadDetails)
+	router.POST("/:slug_or_id/details", u.UpdateThread)
+	router.GET("/:slug_or_id/posts", u.GetPostsThread)
 	router.POST("/:slug_or_id/vote", u.VoteOnThread)
 }
 
@@ -107,11 +107,6 @@ func (u *UserHandler) UpdateThread(ctx *gin.Context) {
 		}
 	}
 
-	//if err := common.ReqValidation(&req); err != nil {
-	//	ctx.JSON(http.StatusBadRequest, common.RespError{Err: err.Error()})
-	//	return
-	//}
-
 	newThread, err := u.UserUseCase.UpdateThread(slugOrID, thread)
 	if err != nil {
 		ctx.JSON(http.StatusNotFound, err)
@@ -139,8 +134,14 @@ func (u *UserHandler) GetPostsThread(ctx *gin.Context) {
 		return
 	}
 
+	if posts == nil {
+		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found"))
+	}
 	if *posts == nil {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found."))
+		ctx.JSON(http.StatusOK, []int{})
+	//	return
+	//} else if *posts == nil {
+	//	ctx.JSON(http.StatusOK, []int{})
 		return
 	}
 
@@ -155,11 +156,6 @@ func (u *UserHandler) VoteOnThread(ctx *gin.Context) {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
-
-	//if err := common.ReqValidation(&req); err != nil {
-	//	ctx.JSON(http.StatusBadRequest, common.RespError{Err: err.Error()})
-	//	return
-	//}
 
 	if vote.Voice != 1 && vote.Voice != -1 {
 		ctx.JSON(http.StatusInternalServerError, common.RespError{Err: "Wrong voice"})

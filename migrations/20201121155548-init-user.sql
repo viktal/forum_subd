@@ -10,6 +10,7 @@ create table users
         constraint users_pkey primary key,
     email citext not null unique,
     nickname citext not null unique,
+    nickname_byt bytea GENERATED ALWAYS AS (lower(nickname)::bytea) STORED,
     fullname varchar(128) not null,
     about text
 );

@@ -32,16 +32,11 @@ func (u *UserHandler) GetPostDetails(ctx *gin.Context) {
 		return
 	}
 
-	//related := ctx.Param("related")
 	var ListRelated struct {
 		Related string `form:"related"`
 	}
 
 	_ = ctx.ShouldBindQuery(&ListRelated)
-	//if err != nil && err.Error() != "EOF" {
-	//	ctx.JSON(http.StatusBadRequest, err)
-	//	return
-	//}
 	err = nil
 
 	result, err := u.UserUseCase.GetPostDetails(id, strings.Split(ListRelated.Related, ","))

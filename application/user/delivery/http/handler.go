@@ -12,10 +12,6 @@ type UserHandler struct {
 	UserUseCase user.UseCase
 }
 
-type Resp struct {
-	User *models.User `json:"user"`
-}
-
 func NewRest(router *gin.RouterGroup, useCase user.UseCase) *UserHandler {
 	rest := &UserHandler{UserUseCase: useCase}
 	rest.routes(router)
@@ -43,6 +39,10 @@ func (u *UserHandler) GetUserProfile(ctx *gin.Context) {
 		ctx.JSON(http.StatusNotFound, err)
 		return
 	}
+
+	//if _, _, _ = easyjson.MarshalToHTTPResponseWriter(models.ListBriefResumeInfo(resumes), ctx.Writer); err != nil {
+	//	ctx.AbortWithError(http.StatusInternalServerError, err)
+	//}
 	ctx.JSON(http.StatusOK, user)
 }
 
@@ -102,7 +102,6 @@ func (u *UserHandler) UpdateUser(ctx *gin.Context) {
 			ctx.AbortWithError(http.StatusBadRequest, err)
 			return
 		}
-
 	}
 	ctx.JSON(http.StatusOK, userUpdate)
 }

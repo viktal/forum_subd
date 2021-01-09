@@ -14,7 +14,7 @@ create table thread
     title text,
     message text,
     slug citext,
-    create_date timestamp,
+    create_date timestamp WITH TIME ZONE,
     votes numeric default 0
 );
 

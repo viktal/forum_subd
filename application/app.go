@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"forum/application/common"
 	"github.com/apsdehal/go-logger"
-	"github.com/asaskevich/govalidator"
-	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"net/http/pprof"
 
 	UserHandler "forum/application/user/delivery/http"
 	UserRepository "forum/application/user/repository"
@@ -33,7 +32,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -47,10 +45,8 @@ type dbConfig struct {
 }
 
 type Config struct {
-	Listen  string    `yaml:"listen"`
-	Db      *dbConfig `yaml:"db"`
-	DocPath string    `yaml:"docPath"`
-	Redis   string    `yaml:"redis_address"`
+	Listen string    `yaml:"listen"`
+	Db     *dbConfig `yaml:"db"`
 }
 
 type Logger struct {
@@ -78,35 +74,26 @@ func NewApp(config Config) *App {
 
 	infoLogger.SetLogLevel(logger.ErrorLevel)
 
+	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
-	r.Use(common.RequestLogger(log.InfoLogger))
-	r.Use(common.ErrorLogger(log.ErrorLogger))
-	r.Use(common.ErrorMiddleware())
+	//r.Use(common.RequestLogger(log.InfoLogger))
+	//r.Use(common.ErrorLogger(log.ErrorLogger))
+	//r.Use(common.ErrorMiddleware())
 	r.Use(common.Recovery(log.ErrorLogger))
 
 	// Only for requests WITHOUT credentials, the literal value "*" can be specified
-	corsMiddleware := cors.New(cors.Config{
-		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-		AllowOriginFunc: func(origin string) bool {
-			return strings.HasPrefix(origin, "http://127.0.0.1")
-		},
-		MaxAge: time.Hour,
-	})
-
-	r.Use(corsMiddleware)
-
-	r.NoRoute(func(c *gin.Context) {
-		c.AbortWithStatus(http.StatusNotFound)
-	})
-
-	if config.DocPath != "" {
-		r.Static("/doc/api", config.DocPath)
-	} else {
-		log.ErrorLogger.Warning("Document path is undefined")
-	}
+	//corsMiddleware := cors.New(cors.Config{
+	//	AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
+	//	AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
+	//	ExposeHeaders:    []string{"Content-Length"},
+	//	AllowCredentials: true,
+	//	AllowOriginFunc: func(origin string) bool {
+	//		return strings.HasPrefix(origin, "http://127.0.0.1")
+	//	},
+	//	MaxAge: time.Hour,
+	//})
+	//
+	//r.Use(corsMiddleware)
 
 	db := pg.Connect(&pg.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Db.Host, config.Db.Port),
@@ -115,9 +102,7 @@ func NewApp(config Config) *App {
 		Database: config.Db.Name,
 	})
 
-
-	gin.Default()
-	govalidator.SetFieldsRequiredByDefault(false)
+	//gin.Default()
 	api := r.Group("/api")
 
 	UserRep := UserRepository.NewPgRepository(db)
@@ -140,6 +125,17 @@ func NewApp(config Config) *App {
 	PostCase := PostUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, PostRep, UserRep, ForumRep, ThreadRep)
 	PostHandler.NewRest(api.Group("/post"), PostCase)
 
+	r.GET("/debug/pprof/", func(c *gin.Context) { pprof.Index(c.Writer, c.Request) })
+	r.GET("/debug/pprof/cmdline", func(c *gin.Context) { pprof.Cmdline(c.Writer, c.Request) })
+	r.GET("/debug/pprof/profile", func(c *gin.Context) { pprof.Profile(c.Writer, c.Request) })
+	r.GET("/debug/pprof/symbol", func(c *gin.Context) { pprof.Symbol(c.Writer, c.Request) })
+	r.GET("/debug/pprof/trace", func(c *gin.Context) { pprof.Trace(c.Writer, c.Request) })
+
+	r.POST("/debug/pprof/", func(c *gin.Context) { pprof.Index(c.Writer, c.Request) })
+	r.POST("/debug/pprof/cmdline", func(c *gin.Context) { pprof.Cmdline(c.Writer, c.Request) })
+	r.POST("/debug/pprof/profile", func(c *gin.Context) { pprof.Profile(c.Writer, c.Request) })
+	r.POST("/debug/pprof/symbol", func(c *gin.Context) { pprof.Symbol(c.Writer, c.Request) })
+	r.POST("/debug/pprof/trace", func(c *gin.Context) { pprof.Trace(c.Writer, c.Request) })
 
 	app := App{
 		config:   config,

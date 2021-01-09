@@ -6,7 +6,6 @@ type Thread struct {
 
 	// Пользователь, создавший данную тему.
 	// Required: true
-	//TODO Вернуть author
 	Nickname string `json:"author"`
 
 	// Дата создания ветки на форуме.

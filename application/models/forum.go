@@ -43,7 +43,7 @@ type ForumCreate struct {
 
 	// Nickname пользователя, который отвечает за форум.
 	// Required: true
-	User    string `json:"user"`
+	Author  string `json:"user"`
 	UserID  int    `json:"-"`
 	ForumID int    `json:"-"`
 }
