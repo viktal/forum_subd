@@ -1,5 +1,5 @@
 ---
-listen: :8080
+listen: :5000
 
 docPath: /opt/doc
 
@@ -9,5 +9,3 @@ db:
   user: postgres
   password: docker
   name: forum_subd
-
-redis_address: localhost:7001

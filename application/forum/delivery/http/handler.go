@@ -148,15 +148,25 @@ func (r *ForumHandler) GetAllForumUsers(ctx *gin.Context) {
 		return
 	}
 
-	var params models.ForumParams
-
+	var params models.UserParams
 	if err := ctx.ShouldBindQuery(&params); err != nil {
 		ctx.AbortWithError(http.StatusBadRequest, err)
 		return
 	}
+
 	result, err := r.UseCaseForum.GetAllForumUsers(req.Slug, params)
 	if err != nil {
 		ctx.AbortWithError(http.StatusInternalServerError, err)
+		return
+	}
+
+	if result == nil {
+		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found"))
+		return
+	}
+
+	if *result == nil {
+		ctx.JSON(http.StatusOK, []int{})
 		return
 	}
 

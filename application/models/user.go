@@ -47,3 +47,10 @@ type UserUpdate struct {
 
 	UserID int `json:"-"`
 }
+
+type UserParams struct {
+	Since *string `form:"since"`
+	//Идентификатор пользователя, с которого будут выводиться пользоватли (пользователь с данным идентификатором в результат не попадает).
+	Limit uint `form:"limit" default:"100"`
+	Desc  bool `form:"desc" default:"false"` //Флаг сортировки по убыванию.
+}

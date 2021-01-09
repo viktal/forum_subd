@@ -56,3 +56,11 @@ type PostFull struct {
 	// thread
 	Thread *Thread `json:"thread,omitempty"`
 }
+
+type PostParams struct {
+	Since *int `form:"since"` //Дата создания ветви обсуждения, с которой будут выводиться записи
+	//Идентификатор пользователя, с которого будут выводиться пользоватли (пользователь с данным идентификатором в результат не попадает).
+	Limit uint `form:"limit" default:"100"`
+	Sort  string `form:"sort" default:"flat"` //Флаг сортировки.
+	Desc  bool `form:"desc" default:"false"` //Флаг сортировки по убыванию.
+}

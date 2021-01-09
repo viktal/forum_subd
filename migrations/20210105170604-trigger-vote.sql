@@ -29,7 +29,7 @@ $BODY$;
 
 -- +migrate StatementBegin
 CREATE TRIGGER add_vote_to_thread
-    AFTER INSERT ON main.vote FOR EACH ROW EXECUTE PROCEDURE update_cnt_vote_thread();
+    AFTER INSERT OR UPDATE ON main.vote FOR EACH ROW EXECUTE PROCEDURE update_cnt_vote_thread();
 
 -- +migrate StatementEnd
 

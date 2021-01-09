@@ -76,7 +76,7 @@ func NewApp(config Config) *App {
 		ErrorLogger: errorLogger,
 	}
 
-	infoLogger.SetLogLevel(logger.DebugLevel)
+	infoLogger.SetLogLevel(logger.ErrorLevel)
 
 	r := gin.New()
 	r.Use(common.RequestLogger(log.InfoLogger))

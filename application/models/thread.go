@@ -43,6 +43,23 @@ type Thread struct {
 	UserID  int   `json:"-"`
 }
 
+type ThreadUpdate struct {
+	// Идентификатор ветки обсуждения.
+	// Read Only: true
+	ThreadID int `json:"id"`
+
+	// Описание ветки обсуждения.
+	// Required: true
+	Message *string `json:"message"`
+
+
+	// Заголовок ветки обсуждения.
+	// Required: true
+	Title *string `json:"title"`
+
+	UserID  int   `json:"-"`
+}
+
 type ListThread []Thread
 
 type ThreadParams struct {

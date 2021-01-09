@@ -2,6 +2,7 @@ package repository
 
 import (
 	"fmt"
+	"forum/application/common"
 	"forum/application/models"
 	"forum/application/post"
 	"github.com/go-pg/pg/v9"
@@ -32,13 +33,16 @@ func (p pgStorage) UpdatePostDetails(id int, message string) (*models.Post, erro
 	var post models.Post
 	query := fmt.Sprintf(`update main.post
 		set message = '%s',
-		is_edited = true
+		is_edited = main.post.is_edited or main.post.message != '%s'
 		where main.post.post_id = '%v'
-		returning post_id, forum, author, thread_id, message, parent, is_edited, created `, message, id)
+		returning post_id, forum, author, thread_id, message, parent, is_edited, created `, message, message, id)
 
 	_, err := p.db.Query(&post, query)
 	if err != nil {
 		return nil, err
+	}
+	if post.PostID == 0 {
+		return nil, common.NewErr(404, "Not found")
 	}
 	return &post, nil
 }

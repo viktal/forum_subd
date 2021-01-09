@@ -74,7 +74,8 @@ func (p *PGRepository) CreateForum(forum models.ForumCreate) (*models.ForumCreat
 func (p *PGRepository) GetForumBySlug(slug string) (*models.Forum, error) {
 	var forum models.Forum
 	forum.Slug = slug
-	query := fmt.Sprintf(`select main.forum.forum_id, main.forum.slug, main.forum.title, u.nickname as user, count(t.thread_id) threads, count(p.post_id) posts
+	query := fmt.Sprintf(`select main.forum.forum_id, main.forum.slug, main.forum.title, u.nickname as user, 
+				count( DISTINCT t.thread_id) threads, count( DISTINCT p.post_id) posts
 				from main.forum
 				join main.users u on u.user_id = forum.user_id
 				left join main.post p on forum.forum_id = p.forum_id
@@ -91,7 +92,8 @@ func (p *PGRepository) GetForumBySlug(slug string) (*models.Forum, error) {
 
 func (p *PGRepository) GetForumByID(ID int) (*models.Forum, error) {
 	var forum models.Forum
-	query := fmt.Sprintf(`select main.forum.title, u.nickname as user, count(t.thread_id) threads, count(p.post_id) posts
+	query := fmt.Sprintf(`select main.forum.title, u.nickname as user, main.forum.slug, 
+				count(t.thread_id) threads, count(p.post_id) posts
 				from main.forum
 				join main.users u on u.user_id = forum.user_id
 				join main.post p on forum.forum_id = p.forum_id
@@ -110,29 +112,63 @@ type Req struct {
 	Pu []int `pg:"pu, array"`
 }
 
-func (p *PGRepository) GetAllForumUsers(slug string, params models.ForumParams) ([]models.User, error) {
+func (p *PGRepository) GetAllForumUsers(slug string, params models.UserParams) (*[]models.User, error) {
 	//TODO params
 	var req []Req
 	findID := fmt.Sprintf(`select DISTINCT main.thread.user_id tu,
 			array_agg(distinct main.post.user_id) as pu
 			from main.forum
 			join main.thread  on forum.forum_id = main.thread.forum_id
-			join main.post  on forum.forum_id = main.post.forum_id
-			where main.forum.slug = '%s'
+			left join main.post  on forum.forum_id = main.post.forum_id
+			where main.forum.slug ilike '%s'
 			group by main.thread.user_id;`, slug)
 
-
-	//findID := fmt.Sprintf(`select main.post.user_id as u, main.thread.user_id as tu
-	//from main.forum
-	//join main.post  on forum.forum_id = main.post.forum_id
-	//join main.thread  on forum.forum_id = main.thread.forum_id
-    //where main.forum.slug = '%s';`, slug)
 	_, err := p.db.Query(&req, findID)
+
+
+	var exc struct{
+		Exists bool
+	}
+	if req == nil {
+		_, err := p.db.Query(&exc, `
+				select exists(select 1 
+				from main.forum
+              	where forum.slug ilike ?) AS "exists"`, slug)
+		if err != nil {
+			return nil, err
+		}
+		if exc.Exists == true {
+			return &[]models.User{}, nil
+		} else {
+			return nil, nil
+		}
+	}
+
 
 	list := getUnique(req)
 	findUsers := fmt.Sprintf(`select *
 				from main.users
-				where user_id in (%s);`, strings.Join(list, ","))
+				where user_id in (%s)
+				`, strings.Join(list, ","))
+
+	if params.Since != nil {
+		if params.Desc {
+			findUsers += fmt.Sprintf(` and lower('%s')::bytea > lower(nickname)::bytea`, *params.Since)
+		} else {
+			findUsers += fmt.Sprintf(` and lower('%s')::bytea < lower(nickname)::bytea`, *params.Since)
+		}
+
+	}
+
+	findUsers += ` order by lower(nickname) COLLATE "C"`
+
+	if params.Desc {
+		findUsers += " desc"
+	}
+
+	if params.Limit != 0 {
+		findUsers += fmt.Sprintf(" limit %d", params.Limit)
+	}
 
 	var users []models.User
 	_, err = p.db.Query(&users, findUsers)
@@ -140,7 +176,8 @@ func (p *PGRepository) GetAllForumUsers(slug string, params models.ForumParams) 
 	if err != nil {
 		return nil, err
 	}
-	return users, nil
+
+	return &users, nil
 }
 
 func getUnique(arrayStruct []Req) []string {

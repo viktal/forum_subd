@@ -40,7 +40,7 @@ func (u *UseCase) GetThreadDetails(slugOrID string) (*models.Thread, error) {
 }
 
 
-func (u *UseCase) UpdateThread(slugOrID string, t models.Thread) (*models.Thread, error) {
+func (u *UseCase) UpdateThread(slugOrID string, t models.ThreadUpdate) (*models.Thread, error) {
 	var newThread *models.Thread
 	var err error
 	var id int
@@ -72,14 +72,14 @@ func (u *UseCase) CreatePosts(slugOrID string, posts models.ListPosts) (*models.
 	return newThread, nil
 }
 
-func (u *UseCase) GetPostsThread(slugOrID string) ([]models.Post, error) {
-	var posts []models.Post
+func (u *UseCase) GetPostsThread(slugOrID string, params models.PostParams) (*[]models.Post, error) {
+	var posts *[]models.Post
 	var err error
 	var id int
 	if id, err = strconv.Atoi(slugOrID); err == nil {
-		posts, err = u.repos.GetPostsThreadByID(id)
+		posts, err = u.repos.GetPostsThreadByID(id, params)
 	} else {
-		posts, err = u.repos.GetPostsThreadBySlug(slugOrID)
+		posts, err = u.repos.GetPostsThreadBySlug(slugOrID, params)
 	}
 
 	if err != nil {

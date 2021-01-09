@@ -10,5 +10,5 @@ type UseCase interface {
 	CreateThread(slugForum string, thread models.Thread) (*models.Thread, *common.Err)
 	GetForumBySlug(slug string) (*models.Forum, error)
 	GetAllForumTreads(slugForum string, params models.ForumParams) (*[]models.Thread, error)
-	GetAllForumUsers(slug string, params models.ForumParams) ([]models.User, error)
+	GetAllForumUsers(slug string, params models.UserParams) (*[]models.User, error)
 }

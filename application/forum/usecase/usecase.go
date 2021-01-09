@@ -52,6 +52,6 @@ func (u *UseCase) GetAllForumTreads(slug string, params models.ForumParams) (*[]
 	return u.strg.GetAllForumTreads(slug, params)
 }
 
-func (u *UseCase) GetAllForumUsers(slug string, params models.ForumParams) ([]models.User, error) {
+func (u *UseCase) GetAllForumUsers(slug string, params models.UserParams) (*[]models.User, error) {
 	return u.strg.GetAllForumUsers(slug, params)
 }

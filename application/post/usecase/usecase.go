@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"forum/application/common"
 	"forum/application/forum"
 	"forum/application/models"
 	"forum/application/post"
@@ -38,10 +39,13 @@ func (u UseCase) GetPostDetails(ID int, related []string) (*models.PostFull, err
 	if err != nil {
 		return nil, err
 	}
+	if post.ThreadID == 0 {
+		return nil, common.NewErr(404, "Not found")
+	}
 
 	for i := range related {
 		switch related[i] {
-		case "author":
+		case "user":
 			author, err := u.userRep.GetUserByID(postFull.Post.UserID)
 			if err != nil {
 				return nil, err
@@ -64,6 +68,10 @@ func (u UseCase) GetPostDetails(ID int, related []string) (*models.PostFull, err
 
 	}
 	return postFull, err
+}
+
+func (u UseCase) GetPostByID(ID int) (*models.Post, error) {
+	return u.repos.GetPostByID(ID)
 }
 
 func (u UseCase) UpdatePostDetails(ID int, newMessage string) (*models.Post, error) {
