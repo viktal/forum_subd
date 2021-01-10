@@ -2,16 +2,16 @@ package api
 
 import (
 	"fmt"
+	ThreadHandler "forum/application/thread/delivery/http"
+	ThreadRepository "forum/application/thread/repository"
+	ThreadUseCase "forum/application/thread/usecase"
 	UserHandler "forum/application/user/delivery/http"
 	UserRepository "forum/application/user/repository"
 	UserUseCase "forum/application/user/usecase"
 	"github.com/apsdehal/go-logger"
 	"github.com/buaazp/fasthttprouter"
 	"github.com/valyala/fasthttp"
-
-	ThreadHandler "forum/application/thread/delivery/http"
-	ThreadRepository "forum/application/thread/repository"
-	ThreadUseCase "forum/application/thread/usecase"
+	"github.com/valyala/fasthttp/pprofhandler"
 
 	PostHandler "forum/application/post/delivery/http"
 	PostRepository "forum/application/post/repository"
@@ -69,12 +69,21 @@ func NewApp(config Config) *App {
 
 	router := fasthttprouter.New()
 
-
+	params := make(map[string]interface{})
+	params["search_path"] = "main"
 	db := pg.Connect(&pg.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Db.Host, config.Db.Port),
 		User:     config.Db.User,
 		Password: config.Db.Password,
 		Database: config.Db.Name,
+		OnConnect: func(conn *pg.Conn) error {
+			_, err := conn.Exec("set search_path=?", "main")
+
+			//_, err = conn.Exec("LOAD 'auto_explain'")
+			//_, err = conn.Exec("SET auto_explain.log_analyze TO on;")
+			//_, err = conn.Exec("SET auto_explain.log_min_duration TO 300;")
+			return err
+		},
 	})
 
 
@@ -98,18 +107,7 @@ func NewApp(config Config) *App {
 	PostCase := PostUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, PostRep, UserRep, ForumRep, ThreadRep)
 	PostHandler.NewRest(router, PostCase)
 
-	//router.GET("/debug/pprof/", func(c *fasthttp.RequestCtx) { pprof.Index(c.Writer, c.Request) })
-	//router.GET("/debug/pprof/cmdline", func(c *fasthttp.RequestCtx) { pprof.Cmdline(c.Writer, c.Request) })
-	//router.GET("/debug/pprof/profile", func(c *fasthttp.RequestCtx) { pprof.Profile(c.Writer, c.Request) })
-	//router.GET("/debug/pprof/symbol", func(c *fasthttp.RequestCtx) { pprof.Symbol(c.Writer, c.Request) })
-	//router.GET("/debug/pprof/trace", func(c *fasthttp.RequestCtx) { pprof.Trace(c.Writer, c.Request) })
-	//
-	//router.POST("/debug/pprof/", func(c *fasthttp.RequestCtx) { pprof.Index(c.Writer, c.Request) })
-	//router.POST("/debug/pprof/cmdline", func(c *fasthttp.RequestCtx) { pprof.Cmdline(c.Writer, c.Request) })
-	//router.POST("/debug/pprof/profile", func(c *fasthttp.RequestCtx) { pprof.Profile(c.Writer, c.Request) })
-	//router.POST("/debug/pprof/symbol", func(c *fasthttp.RequestCtx) { pprof.Symbol(c.Writer, c.Request) })
-	//router.POST("/debug/pprof/trace", func(c *fasthttp.RequestCtx) { pprof.Trace(c.Writer, c.Request) })
-
+	router.GET("/debug/*path", pprofhandler.PprofHandler)
 	app := App{
 		config:   config,
 		log:      log,

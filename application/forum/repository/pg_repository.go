@@ -24,7 +24,7 @@ func (p *PGRepository) CreateForum(forum models.ForumCreate) (*models.ForumCreat
 							(slug, title, user_id, author)
 							select '%s', '%s', user_id, nickname
 							from main.users
-								where lower(nickname) = lower('%s')
+								where nickname = '%s'
 							returning forum.slug, forum.title, forum.author, forum.forum_id`,
 		forum.Slug, forum.Title, forum.Author)
 	_, err := p.db.Query(&forum, query)
@@ -34,7 +34,7 @@ func (p *PGRepository) CreateForum(forum models.ForumCreate) (*models.ForumCreat
 			query := fmt.Sprintf(`
 				select main.forum.title, main.forum.author as user, main.forum.slug
 				from main.forum
-				where lower(main.forum.slug) = lower('%s'); `, forum.Slug)
+				where main.forum.slug = '%s'; `, forum.Slug)
 			_, err1 := p.db.Query(&forum, query)
 			if err1 != nil {
 				newErr := common.NewErr(409, err1.Error())
@@ -60,7 +60,7 @@ func (p *PGRepository) GetForumBySlug(slug string) (*models.Forum, error) {
 	query := fmt.Sprintf(`select main.forum.forum_id, main.forum.slug, main.forum.title, 
 				main.forum.author as user, main.forum.threads, main.forum.posts
 				from main.forum
-				where lower(main.forum.slug) = lower('%s')`, slug)
+				where main.forum.slug = '%s'`, slug)
 	_, err := p.db.Query(&forum, query)
 	if err != nil {
 		return nil, err
@@ -89,32 +89,22 @@ type Req struct {
 
 func (p *PGRepository) GetAllForumUsers(slug string, params models.UserParams) (*[]models.User, error) {
 	findUsers := fmt.Sprintf(`
-			with thread_starters as (
-				select thread_id, user_id
-				from main.thread
-				where lower(forum) = lower('%s')
-			), all_users as (
-				select post.user_id
-				from thread_starters
-					join main.post on post.thread_id = thread_starters.thread_id
-				UNION
-				SELECT user_id from thread_starters
-			)
-			select main.users.user_id, main.users.about, main.users.email, main.users.fullname, 
-				main.users.nickname from all_users
-			join main.users on all_users.user_id = main.users.user_id
+			select main.users.user_id, main.users.about, main.users.email, main.users.fullname, main.users.nickname 
+			from main.forum_users
+			join main.users on main.forum_users.user_id = main.users.user_id
+			where main.forum_users.forum = '%s' 
 			`, slug)
 
 	if params.Since != nil {
 		if params.Desc {
-			findUsers += fmt.Sprintf(` where lower('%s')::bytea > nickname_byt`, *params.Since)
+			findUsers += fmt.Sprintf(` and '%s' > main.users.nickname`, *params.Since)
 		} else {
-			findUsers += fmt.Sprintf(` where lower('%s')::bytea < nickname_byt`, *params.Since)
+			findUsers += fmt.Sprintf(` and '%s' < main.users.nickname`, *params.Since)
 		}
 
 	}
 
-	findUsers += ` order by lower(nickname) COLLATE "C"`
+	findUsers += ` order by nickname `
 
 	if params.Desc {
 		findUsers += " desc"
@@ -138,7 +128,7 @@ func (p *PGRepository) GetAllForumUsers(slug string, params models.UserParams) (
 		_, err := p.db.Query(&exc, `
 				select exists(select 1
 				from main.forum
-	         	where lower(forum.slug) = lower(?)) AS "exists"`, slug)
+	         	where forum.slug = ?) AS "exists"`, slug)
 		if err != nil {
 			return nil, err
 		}
@@ -159,9 +149,9 @@ func (p *PGRepository) CreateThread(slugForum string, thread models.Thread) (*mo
 			insert into main.thread
 			(forum, forum_id, user_id,
 			nickname, title, message, slug, create_date, votes) values
-			((select slug as forum from main.forum where lower(slug) = lower('%s')),
-			(select forum_id as forum from main.forum where lower(slug) = lower('%s')),
-			(select user_id from main.users where lower(nickname) = lower('%s')),
+			((select slug as forum from main.forum where slug = '%s'),
+			(select forum_id as forum from main.forum where slug = '%s'),
+			(select user_id from main.users where nickname = '%s'),
 			'%s', '%s', '%s', nullif(?, ''), ?, %d) returning *`,
 		slugForum, slugForum, thread.Nickname,
 		thread.Nickname, thread.Title, thread.Message, thread.Votes)
@@ -172,7 +162,7 @@ func (p *PGRepository) CreateThread(slugForum string, thread models.Thread) (*mo
 			query := fmt.Sprintf(`select  main.thread.nickname, main.thread.create_date, main.thread.thread_id, 
 			main.thread.message, main.thread.slug, main.thread.title, main.thread.forum
 			from main.thread
-			where lower(main.thread.slug) = lower('%v')`, thread.Slug)
+			where main.thread.slug = '%s'`, thread.Slug)
 			_, err1 := p.db.Query(&oldThread, query)
 			if err1 != nil {
 				newErr := common.NewErr(500, err1.Error())
@@ -193,7 +183,7 @@ func (p *PGRepository) GetAllForumTreads(slugForum string, params models.ForumPa
 	var threads []models.Thread
 	query := fmt.Sprintf(`select main.thread.*
 		from main.thread
-		where lower(main.thread.forum) = lower('%s')`, slugForum)
+		where main.thread.forum = '%s'`, slugForum)
 
 	if !params.Since.IsZero() {
 		if params.Desc {
@@ -223,7 +213,7 @@ func (p *PGRepository) GetAllForumTreads(slugForum string, params models.ForumPa
 	if threads == nil {
 		_, err := p.db.Query(&exc, `select exists(
 				select 1 from main.thread
-		where lower(main.thread.forum) = lower(?)) AS "exists"`, slugForum)
+		where main.thread.forum = ?) AS "exists"`, slugForum)
 		if err != nil {
 			return nil, err
 		}

@@ -24,7 +24,7 @@ func (p *pgStorage) GetThreadDetailsByID(ID int) (*models.Thread, error) {
 	query := fmt.Sprintf(`select  main.thread.nickname, main.thread.create_date, main.thread.thread_id, 
 			main.thread.message, main.thread.slug, main.thread.title, main.thread.forum, main.thread.votes
 			from main.thread
-			where main.thread.thread_id = '%v'`, ID)
+			where main.thread.thread_id = '%d'`, ID)
 	_, err := p.db.Query(&thread, query)
 	if err != nil {
 		return nil, err
@@ -37,10 +37,10 @@ func (p *pgStorage) GetThreadDetailsByID(ID int) (*models.Thread, error) {
 
 func (p *pgStorage) GetThreadDetailsBySlug(slug string) (*models.Thread, error) {
 	var thread models.Thread
-	query := fmt.Sprintf(`select  main.thread.nickname, main.thread.create_date, main.thread.thread_id, 
+	query := fmt.Sprintf(`select main.thread.nickname, main.thread.create_date, main.thread.thread_id, 
 			main.thread.message, main.thread.slug, main.thread.title, main.thread.forum, main.thread.votes
 			from main.thread
-			where lower(main.thread.slug) = lower('%v')`, slug)
+			where main.thread.slug = '%s'`, slug)
 	_, err := p.db.Query(&thread, query)
 	if err != nil {
 		return nil, err
@@ -50,7 +50,6 @@ func (p *pgStorage) GetThreadDetailsBySlug(slug string) (*models.Thread, error) 
 	}
 	return &thread, nil
 }
-
 
 func (p *pgStorage) UpdateThreadByID(ID int, thread models.ThreadUpdate) (*models.Thread, error) {
 	var newThread models.Thread
@@ -87,18 +86,18 @@ func (p *pgStorage) UpdateThreadBySlug(slug string, thread models.ThreadUpdate) 
 	if thread.Title == nil {
 		_, err = p.db.Query(&newThread, `update main.thread
 		set message = coalesce(?, message)
-		where lower(main.thread.slug) = lower(?)
+		where main.thread.slug = ?
 		returning *`, thread.Message, slug)
 	} else if thread.Message == nil {
 		_, err = p.db.Query(&newThread, `update main.thread
 		set title = coalesce(?, title)
-		where lower(main.thread.slug) = lower(?)
-		returning *`,  thread.Title, slug)
+		where main.thread.slug = ?
+		returning *`, thread.Title, slug)
 	} else {
 		_, err = p.db.Query(&newThread, `update main.thread
 		set message = coalesce(?, message),
 			title = coalesce(?, title)
-		where lower(main.thread.slug) = lower(?)
+		where main.thread.slug = ?
 		returning *`, thread.Message, thread.Title, slug)
 	}
 	if err != nil {
@@ -109,7 +108,6 @@ func (p *pgStorage) UpdateThreadBySlug(slug string, thread models.ThreadUpdate) 
 	}
 	return &newThread, nil
 }
-
 
 func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.ListPosts) (*models.ListPosts, error) {
 	var parents []string
@@ -125,13 +123,13 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 
 	var err error
 	if len(parents) > 0 {
-		var counts struct{
-			Total int
+		var counts struct {
+			Total   int
 			Matched bool
 		}
 		if byType == common.Slug {
 			_, err = p.db.Query(&counts, `
-			select count(*) as total, bool_and(lower(main.thread.slug) = lower(?)) as matched from main.post
+			select count(*) as total, bool_and(main.thread.slug = ?) as matched from main.post
 			join main.thread on main.post.thread_id = main.thread.thread_id
 			where post_id IN (?)`, slugOrID, pg.Strings(parents))
 		} else {
@@ -147,66 +145,85 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 			err := common.NewErr(409, "Parent post was created in another thread")
 			return nil, err
 		}
-
 	}
 
-	values := ""
+	var thread models.Thread
+	if byType == common.ID {
+		id, err := strconv.Atoi(slugOrID)
+		if err != nil {
+			return nil, err
+		}
+		_, err = p.db.Query(&thread, "select * from main.thread where thread_id = ?", id)
+
+	} else {
+		_, err = p.db.Query(&thread, "select * from main.thread where slug = ?", slugOrID)
+	}
+	if err != nil {
+		return nil, err
+	} else if thread.ThreadID == 0 {
+		return nil, common.NewErr(404, "Not found")
+	}
+
+	var values string
+
+	for i := range posts {
+		values += fmt.Sprintf("('%s')", posts[i].Author)
+		if i < len(posts)-1 {
+			values += ", "
+		}
+	}
+	query := fmt.Sprintf(`
+		with ctetable(nick) as (values %s)
+		select user_id
+		from main.users
+		inner join ctetable on ctetable.nick = main.users.nickname`, values)
+
+	var userIDs []int
+	_, err = p.db.Query(&userIDs, query)
+	if err != nil {
+		return nil, err
+	} else if len(userIDs) != len(posts) {
+		return nil, common.NewErr(404, "Not found")
+	}
+
+	values = ""
 	timeCreate := time.Now()
 	for i := range posts {
-		if byType == common.ID {
-			id, err := strconv.Atoi(slugOrID)
-			if err != nil {
-				return nil, err
-			}
-			posts[i].ThreadID = id
-			_, err = p.db.Query(&posts[i], "select slug as thread_slug, forum_id, forum " +
-				"from main.thread where thread_id = ?", posts[i].ThreadID)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			posts[i].ThreadSlug = slugOrID
-			_, err := p.db.Query(&posts[i], "select thread_id, forum_id, slug as thread_slug, forum " +
-				"from main.thread " +
-				"where lower(slug) = lower(?)", posts[i].ThreadSlug)
-			if err != nil {
-				return nil, err
-			}
-			if posts[i].ThreadID == 0 {
-				return nil, common.NewErr(404, "Not found")
-			}
-		}
-
+		posts[i].ForumID = thread.ForumID
+		posts[i].Forum = thread.Forum
+		posts[i].ThreadID = thread.ThreadID
+		posts[i].ThreadSlug = thread.Slug
+		posts[i].UserID = userIDs[i]
 
 		if posts[i].Created.IsZero() {
 			posts[i].Created = timeCreate
 		}
 
-		_, err = p.db.Query(&posts[i].UserID, "select main.users.user_id " +
-			"from main.users " +
+		_, err = p.db.Query(&posts[i].UserID, "select main.users.user_id "+
+			"from main.users "+
 			"where users.nickname = ?", posts[i].Author)
 		if err != nil {
 			return nil, err
 		}
 		if posts[i].UserID == 0 {
-			return nil, common.NewErr(404, "Not found")
 		}
 
 		values += fmt.Sprintf(`('%d', '%s', '%d', '%s', '%d', '%s', '%s', '%d', '%t', '%s')`,
 			posts[i].ForumID, posts[i].Forum, posts[i].UserID, posts[i].Author, posts[i].ThreadID, posts[i].ThreadSlug,
 			posts[i].Message, posts[i].Parent, posts[i].IsEdited, posts[i].Created.Format(time.RFC3339Nano))
-		if i < len(posts) - 1 {
+		if i < len(posts)-1 {
 			values += ", "
 		}
 	}
 
-	query := fmt.Sprintf(`insert into main.post (forum_id, forum, user_id, author, thread_id, 
+	query = fmt.Sprintf(`insert into main.post (forum_id, forum, user_id, author, thread_id, 
 			thread, message, parent, is_edited, created) values %s returning post_id, created`, values)
 
 	_, err = p.db.Query(&posts, query)
 	if err != nil {
 		return nil, err
 	}
+
 	return &posts, nil
 }
 
@@ -263,7 +280,6 @@ func (p *pgStorage) GetPostsThreadByIDParentTree(ID int, params models.PostParam
 	}
 	innerQuery += fmt.Sprintf(" limit %d) ", params.Limit)
 
-
 	query := fmt.Sprintf(`select post_id, forum, author, thread_id, message, parent, is_edited, created
 			  from main.post 
 			  where path[1] in %s `, innerQuery)
@@ -309,7 +325,7 @@ func (p *pgStorage) GetPostsThreadByID(ID int, params models.PostParams) (*[]mod
 		}
 	}
 
-	var exc struct{
+	var exc struct {
 		Exists bool
 	}
 	if posts == nil {
@@ -356,7 +372,7 @@ func (p *pgStorage) GetPostsThreadBySlugTree(slug string, params models.PostPara
 	query := fmt.Sprintf(`
 			select post_id, forum, author, thread_id, message, parent, is_edited, created
 			from main.post
-			where lower(thread) = lower('%s')
+			where thread = '%s'
 			`, slug)
 
 	if params.Since != nil {
@@ -387,7 +403,7 @@ func (p *pgStorage) GetPostsThreadBySlugTree(slug string, params models.PostPara
 func (p *pgStorage) GetPostsThreadBySlugParentTree(slug string, params models.PostParams) (*[]models.Post, error) {
 	var posts []models.Post
 
-	innerQuery := fmt.Sprintf("(select post_id from main.post where lower(thread) = lower('%s') and parent = 0 ", slug)
+	innerQuery := fmt.Sprintf("(select post_id from main.post where thread = '%s' and parent = 0 ", slug)
 
 	if params.Since != nil {
 		if params.Desc {
@@ -403,7 +419,6 @@ func (p *pgStorage) GetPostsThreadBySlugParentTree(slug string, params models.Po
 		innerQuery += " order by post_id "
 	}
 	innerQuery += fmt.Sprintf(" limit %d) ", params.Limit)
-
 
 	query := fmt.Sprintf(`select post_id, forum, author, thread_id, message, parent, is_edited, created
 			  from main.post 
@@ -441,7 +456,7 @@ func (p *pgStorage) GetPostsThreadBySlug(slug string, params models.PostParams) 
 		query := fmt.Sprintf(`
 			select post_id, forum, author, thread_id, message, parent, is_edited, created 
 			from main.post 			
-			where lower(thread) = lower('%s')`, slug)
+			where thread = '%s'`, slug)
 
 		query += p.SortForGetPostsThread(params)
 		_, err := p.db.Query(&posts, query)
@@ -451,13 +466,13 @@ func (p *pgStorage) GetPostsThreadBySlug(slug string, params models.PostParams) 
 		}
 	}
 
-	var exc struct{
+	var exc struct {
 		Exists bool
 	}
 	if posts == nil {
 		_, err := p.db.Query(&exc, `
 				select exists(select 1 from main.thread
-				where lower(slug) = lower(?)) AS "exists"`, slug)
+				where slug = ?) AS "exists"`, slug)
 		if err != nil {
 			return nil, err
 		}
@@ -474,7 +489,7 @@ func (p *pgStorage) GetPostsThreadBySlug(slug string, params models.PostParams) 
 func (p *pgStorage) VoteOnThreadByID(ID int, vote models.Vote) (*models.Thread, error) {
 	_, err := p.db.Query(&vote, `
 		insert into main.vote (user_id, thread_id, voice)
-		values ((select user_id from main.users where lower(nickname) = lower(?)), ?, '?')
+		values ((select user_id from main.users where nickname = ?), ?, '?')
 		on conflict (user_id, thread_id) do update set voice = '?' 
 		where vote.voice <> '?'`,
 		vote.Nickname, ID, vote.Voice, vote.Voice, vote.Voice)
@@ -491,8 +506,8 @@ func (p *pgStorage) VoteOnThreadByID(ID int, vote models.Vote) (*models.Thread, 
 func (p *pgStorage) VoteOnThreadBySlug(slug string, vote models.Vote) (*models.Thread, error) {
 	query := fmt.Sprintf(`
 		insert into main.vote (user_id, thread_id, voice) 
-		values ((select user_id from main.users where lower(nickname) = lower('%s')), 
-				(select thread_id from main.thread where lower(slug) = lower('%s')), 
+		values ((select user_id from main.users where nickname = '%s'), 
+				(select thread_id from main.thread where slug = '%s'), 
 				'?')
 		on conflict (user_id, thread_id) do update set voice = '?' 
 		where vote.voice <> '?'`,

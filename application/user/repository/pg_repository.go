@@ -32,7 +32,7 @@ func (p *pgStorage) GetUserByID(ID int) (*models.User, error) {
 func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 	var user models.User
 	query := fmt.Sprintf(`select about, email, fullname, nickname from main.users
-								 where lower(nickname) = lower('%s')`, nickname)
+								 where nickname = '%s'`, nickname)
 
 	_, err := p.db.Query(&user, query)
 	if err != nil || user.Nickname == "" {
@@ -45,18 +45,14 @@ func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 func (p *pgStorage) CreateUser(user models.User) ([]models.User, *common.Err) {
 	var listUsers []models.User
 
-	query := fmt.Sprintf(`insert into main.users
+	_, err := p.db.Query(&user, `insert into main.users
 					(nickname, email, fullname, about)
-					values ('%s', '%s', '%s', '%s')`,
-					user.Nickname, user.Email, user.Fullname, user.About)
-
-	_, err := p.db.Query(&user, query)
+					values (?, ?, ?, ?)`, user.Nickname, user.Email, user.Fullname, user.About)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "ERROR #23505") {
-			query := fmt.Sprintf(`
-				select about, email, fullname, nickname from main.users 
-				where lower(nickname) = lower('%s') or lower(email) = lower('%s')`, user.Nickname, user.Email)
-			_, err1 := p.db.Query(&listUsers, query)
+			_, err1 := p.db.Query(&listUsers,
+				`select about, email, fullname, nickname from main.users 
+				where nickname = ? or email = ?`, user.Nickname, user.Email)
 			if err1 != nil {
 				newErr := common.NewErr(500, err1.Error())
 				return nil, &newErr
@@ -80,7 +76,7 @@ func (p *pgStorage) UpdateUser(userNew models.UserUpdate) (*models.User, *common
 				email = COALESCE(?, email),
 				fullname = COALESCE(?, fullname), 
 				about = COALESCE(?, about)
-				where lower(nickname) = lower(?)
+				where nickname = ?
 				returning user_id, about, email, fullname, nickname`,
 		userNew.Email, userNew.Fullname, userNew.About, userNew.Nickname)
 	if user.UserID == 0 {

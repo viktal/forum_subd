@@ -2,8 +2,6 @@ FROM golang:1.15.2-buster AS build
 
 # Собираем генераторы
 WORKDIR /opt/build
-RUN go get -v github.com/rubenv/sql-migrate/... && mv $GOHOME/go/bin/sql-migrate .
-
 # Копируем исходный код в Docker-контейнер
 COPY . /opt/build
 
@@ -49,11 +47,11 @@ EXPOSE 5000
 # Собранный ранее сервер
 WORKDIR /usr/src/app
 
-COPY ./migrations migrations
 COPY ./configs configs
 COPY ./dbconfig.yml dbconfig.yml
+COPY ./init.sql init.sql
 
 COPY --from=build /opt/build/main .
-COPY --from=build /opt/build/sql-migrate .
 
-CMD service postgresql start && ./sql-migrate up && ./main
+ENV PGPASSWORD docker
+CMD service postgresql start &&  psql -h localhost -d forum_subd -U postgres -p 5432 -a -q -f ./init.sql && ./main
