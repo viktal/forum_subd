@@ -1,19 +1,22 @@
 package http
 
 import (
-	"fmt"
+	"forum/application/common"
 	"forum/application/forum"
 	"forum/application/models"
-	"github.com/gin-gonic/gin"
-	"github.com/gin-gonic/gin/binding"
+	"github.com/buaazp/fasthttprouter"
+	"github.com/mailru/easyjson"
+	"github.com/valyala/fasthttp"
 	"net/http"
+	"strconv"
+	"time"
 )
 
 type ForumHandler struct {
 	UseCaseForum forum.UseCase
 }
 
-func NewRest(router *gin.RouterGroup,
+func NewRest(router *fasthttprouter.Router,
 	useCaseResume forum.UseCase) *ForumHandler {
 	rest := &ForumHandler{
 		UseCaseForum: useCaseResume,
@@ -22,150 +25,151 @@ func NewRest(router *gin.RouterGroup,
 	return rest
 }
 
-func (r *ForumHandler) routes(router *gin.RouterGroup) {
-	router.POST("/:path1/:path2", r.BuildPath) ///:slug/create CreatePost
-	router.POST("/:path1", r.BuildPath) ///create CreateForum
-	router.GET("/:slug/details", r.GetForumBySlug)
-	router.GET("/:slug/threads", r.GetAllForumTreads)
-	router.GET("/:slug/users", r.GetAllForumUsers)
+func (r *ForumHandler) routes(router *fasthttprouter.Router) {
+
+
+	router.POST("/api/forum/:slug", r.CreateForum)
+	router.POST("/api/forum/:slug/create", r.CreateThread)
+	router.GET("/api/forum/:slug/details", r.GetForumBySlug)
+	router.GET("/api/forum/:slug/threads", r.GetAllForumTreads)
+	router.GET("/api/forum/:slug/users", r.GetAllForumUsers)
 }
 
-func (r *ForumHandler) BuildPath(ctx *gin.Context) {
-	path1 := ctx.Param("path1")
-	path2 := ctx.Param("path2")
-
-	if path1 == "create" && path2 == "" {
-		r.CreateForum(ctx)
-	} else if path1 != "" && path2 == "create" {
-		slug := path1
-		r.CreateThread(ctx, slug)
-	} else {
-		ctx.Status(http.StatusNotFound)
-	}
-}
-
-func (r *ForumHandler) CreateForum(ctx *gin.Context) {
+func (r *ForumHandler) CreateForum(c *fasthttp.RequestCtx) {
 	var forum models.ForumCreate
-	if err := ctx.ShouldBindJSON(&forum); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+	_ = forum.UnmarshalJSON(c.PostBody())
+
 
 	result, err := r.UseCaseForum.CreateForum(forum)
+
+	c.SetContentType("application/json")
 	if err != nil {
 		if err.Code() == 404 {
-			ctx.JSON(http.StatusNotFound, err)
-			return
+			c.SetStatusCode(http.StatusNotFound)
+			_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
 		} else if err.Code() == 409 {
-			ctx.JSON(http.StatusConflict, result)
-			return
+			c.SetStatusCode(http.StatusConflict)
+			_, _ = easyjson.MarshalToWriter(result, c)
 		} else {
-			ctx.JSON(http.StatusInternalServerError, err)
-			return
+			c.SetStatusCode(http.StatusInternalServerError)
+			_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
 		}
+	} else {
+		c.SetStatusCode(http.StatusCreated)
+		_, _ = easyjson.MarshalToWriter(result, c)
 	}
-
-	ctx.JSON(http.StatusCreated, result)
 }
-func (r *ForumHandler) CreateThread(ctx *gin.Context, slugForum string) {
+
+func (r *ForumHandler) CreateThread(c *fasthttp.RequestCtx) {
 	var template models.Thread
-	if err := ctx.ShouldBindBodyWith(&template, binding.JSON); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+	template.UnmarshalJSON(c.PostBody())
+	template.Forum = c.UserValue("slug").(string)
 
-	result, err := r.UseCaseForum.CreateThread(slugForum, template)
+
+	result, err := r.UseCaseForum.CreateThread(template.Forum, template)
+
+	c.SetContentType("application/json")
 	if err != nil {
 		if err.Code() == 404 {
-			ctx.JSON(http.StatusNotFound, err)
-			return
+			c.SetStatusCode(http.StatusNotFound)
+			_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
 		} else if err.Code() == 409 {
-			ctx.JSON(http.StatusConflict, result)
-			return
+			c.SetStatusCode(http.StatusConflict)
+			_, _ = easyjson.MarshalToWriter(result, c)
 		} else {
-			ctx.JSON(http.StatusInternalServerError, err)
-			return
+			c.SetStatusCode(http.StatusNotFound)
+			_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
 		}
+	} else {
+		c.SetStatusCode(http.StatusCreated)
+		_, _ = easyjson.MarshalToWriter(result, c)
 	}
-
-	ctx.JSON(http.StatusCreated, result)
 }
 
-func (r *ForumHandler) GetForumBySlug(ctx *gin.Context) {
-	var req struct {
-		Slug string `uri:"slug" binding:"required"`
-	}
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+func (r *ForumHandler) GetForumBySlug(c *fasthttp.RequestCtx) {
+	slug := c.UserValue("slug").(string)
+	result, err := r.UseCaseForum.GetForumBySlug(slug)
 
-	result, err := r.UseCaseForum.GetForumBySlug(req.Slug)
+
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
-		return
+		c.SetStatusCode(http.StatusInternalServerError)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else if result.ForumID == 0 {
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found."}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(result, c)
 	}
-	if result.ForumID == 0 {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found."))
-		return
-	}
-
-	ctx.JSON(http.StatusOK, result)
 }
 
-func (r *ForumHandler) GetAllForumTreads(ctx *gin.Context) {
-	slugForum := ctx.Param("slug")
+func (r *ForumHandler) GetAllForumTreads(c *fasthttp.RequestCtx) {
+	slugForum := c.UserValue("slug").(string)
 
-	var params models.ForumParams
-	if err := ctx.ShouldBindQuery(&params); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
+	limit, _ := strconv.Atoi(string(c.URI().QueryArgs().Peek("limit")))
+	desc, _ := strconv.ParseBool(string(c.URI().QueryArgs().Peek("desc")))
+	since := string(c.URI().QueryArgs().Peek("since"))
+
+	params := models.ForumParams{
+		Limit: uint(limit),
+		Desc:  desc,
 	}
+
+	if since != "" {
+		params.Since, _ = time.Parse(time.RFC3339, since)
+	}
+
 	result, err := r.UseCaseForum.GetAllForumTreads(slugForum, params)
+
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
-		return
+		c.SetStatusCode(http.StatusInternalServerError)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else if *result == nil {
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found"}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(models.ListThread(*result), c)
 	}
-
-	if *result == nil {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found."))
-		return
-	}
-
-	ctx.JSON(http.StatusOK, result)
 }
 
-func (r *ForumHandler) GetAllForumUsers(ctx *gin.Context) {
-	var req struct {
-		Slug string `uri:"slug" binding:"required"`
+func (r *ForumHandler) GetAllForumUsers(c *fasthttp.RequestCtx) {
+	slugForum := c.UserValue("slug").(string)
+
+
+	limit, _ := strconv.Atoi(string(c.URI().QueryArgs().Peek("limit")))
+	desc, _ := strconv.ParseBool(string(c.URI().QueryArgs().Peek("desc")))
+	since := string(c.URI().QueryArgs().Peek("since"))
+
+
+	params := models.UserParams{
+		Since: &since,
+		Limit: uint(limit),
+		Desc:  desc,
 	}
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
+	if since == "" {
+		params.Since = nil
 	}
 
-	var params models.UserParams
-	if err := ctx.ShouldBindQuery(&params); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
 
-	result, err := r.UseCaseForum.GetAllForumUsers(req.Slug, params)
+	result, err := r.UseCaseForum.GetAllForumUsers(slugForum, params)
+
+
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
-		return
+		c.SetStatusCode(http.StatusInternalServerError)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else if result == nil {
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found"}, c)
+	} else if *result == nil {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = c.Write([]byte("[]"))
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(models.UserList(*result), c)
 	}
-
-	if result == nil {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found"))
-		return
-	}
-
-	if *result == nil {
-		ctx.JSON(http.StatusOK, []int{})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, result)
 }
 

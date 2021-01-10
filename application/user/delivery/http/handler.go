@@ -4,7 +4,9 @@ import (
 	"forum/application/common"
 	"forum/application/models"
 	"forum/application/user"
-	"github.com/gin-gonic/gin"
+	"github.com/buaazp/fasthttprouter"
+	"github.com/mailru/easyjson"
+	"github.com/valyala/fasthttp"
 	"net/http"
 )
 
@@ -12,96 +14,74 @@ type UserHandler struct {
 	UserUseCase user.UseCase
 }
 
-func NewRest(router *gin.RouterGroup, useCase user.UseCase) *UserHandler {
+func NewRest(router *fasthttprouter.Router, useCase user.UseCase) *UserHandler {
 	rest := &UserHandler{UserUseCase: useCase}
 	rest.routes(router)
 	return rest
 }
 
-func (u *UserHandler) routes(router *gin.RouterGroup) {
-	router.GET("/:nickname/profile", u.GetUserProfile)
-	router.POST("/:nickname/create", u.CreateUser)
-	router.POST("/:nickname/profile", u.UpdateUser)
+func (u *UserHandler) routes(router *fasthttprouter.Router) {
+	router.GET("/api/user/:nickname/profile", u.GetUserProfile)
+	router.POST("/api/user/:nickname/create", u.CreateUser)
+	router.POST("/api/user/:nickname/profile", u.UpdateUser)
 }
 
-func (u *UserHandler) GetUserProfile(ctx *gin.Context) {
-	var req struct {
-		Nickname string `uri:"nickname" binding:"required"`
-	}
+func (u *UserHandler) GetUserProfile(c *fasthttp.RequestCtx) {
+	Nickname := c.UserValue("nickname").(string)
 
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, common.RespError{Err: common.EmptyFieldErr})
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
-	user, err := u.UserUseCase.GetUserProfile(req.Nickname)
+	user, err := u.UserUseCase.GetUserProfile(Nickname)
+
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, err)
-		return
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(user, c)
 	}
-
-	//if _, _, _ = easyjson.MarshalToHTTPResponseWriter(models.ListBriefResumeInfo(resumes), ctx.Writer); err != nil {
-	//	ctx.AbortWithError(http.StatusInternalServerError, err)
-	//}
-	ctx.JSON(http.StatusOK, user)
 }
 
-func (u *UserHandler) CreateUser(ctx *gin.Context) {
-	var req struct {
-		Nickname string `uri:"nickname" binding:"required"`
-	}
-
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+func (u *UserHandler) CreateUser(c *fasthttp.RequestCtx) {
 	var user models.User
-	user.Nickname = req.Nickname
-	if err := ctx.ShouldBindJSON(&user); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+	_ = user.UnmarshalJSON(c.PostBody())
+	user.Nickname = c.UserValue("nickname").(string)
 
 	userNew, err := u.UserUseCase.CreateUser(user)
+
+	c.SetContentType("application/json")
 	if err != nil {
 		if err.Code() == 409 {
-			ctx.JSON(http.StatusConflict, userNew)
-			return
+			c.SetStatusCode(http.StatusConflict)
+			_, _ = easyjson.MarshalToWriter(models.UserList(userNew), c)
+		} else {
+			c.SetStatusCode(http.StatusInternalServerError)
+			_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
 		}
-		ctx.JSON(http.StatusInternalServerError, err)
-		return
-
+	} else {
+		c.SetStatusCode(http.StatusCreated)
+		_, _ = easyjson.MarshalToWriter(userNew[0], c)
 	}
-	ctx.JSON(http.StatusCreated, userNew[0])
 }
 
-func (u *UserHandler) UpdateUser(ctx *gin.Context) {
-	var req struct {
-		Nickname string `uri:"nickname" binding:"required"`
-	}
-
-	if err := ctx.ShouldBindUri(&req); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+func (u *UserHandler) UpdateUser(c *fasthttp.RequestCtx) {
 	var user models.UserUpdate
-	user.Nickname = req.Nickname
-	if err := ctx.ShouldBindJSON(&user); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+	_ = user.UnmarshalJSON(c.PostBody())
+	user.Nickname = c.UserValue("nickname").(string)
+
 	userUpdate, err := u.UserUseCase.UpdateUser(user)
+
+	c.SetContentType("application/json")
 	if err != nil {
 		if err.Code() == 404 {
-			ctx.JSON(http.StatusNotFound, err)
-			return
+			c.SetStatusCode(http.StatusNotFound)
 		} else if err.Code() == 409 {
-			ctx.JSON(http.StatusConflict, err)
-			return
+			c.SetStatusCode(http.StatusConflict)
 		} else {
-			ctx.AbortWithError(http.StatusBadRequest, err)
-			return
+			c.SetStatusCode(http.StatusBadRequest)
 		}
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(userUpdate, c)
 	}
-	ctx.JSON(http.StatusOK, userUpdate)
 }

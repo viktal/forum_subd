@@ -88,7 +88,6 @@ type Req struct {
 }
 
 func (p *PGRepository) GetAllForumUsers(slug string, params models.UserParams) (*[]models.User, error) {
-	//TODO index post.thread_id, add lower(nickname)::bytea to the user
 	findUsers := fmt.Sprintf(`
 			with thread_starters as (
 				select thread_id, user_id
@@ -101,15 +100,16 @@ func (p *PGRepository) GetAllForumUsers(slug string, params models.UserParams) (
 				UNION
 				SELECT user_id from thread_starters
 			)
-			select main.users.* from all_users
+			select main.users.user_id, main.users.about, main.users.email, main.users.fullname, 
+				main.users.nickname from all_users
 			join main.users on all_users.user_id = main.users.user_id
 			`, slug)
 
 	if params.Since != nil {
 		if params.Desc {
-			findUsers += fmt.Sprintf(` where lower('%s')::bytea > lower(nickname)::bytea`, *params.Since)
+			findUsers += fmt.Sprintf(` where lower('%s')::bytea > nickname_byt`, *params.Since)
 		} else {
-			findUsers += fmt.Sprintf(` where lower('%s')::bytea < lower(nickname)::bytea`, *params.Since)
+			findUsers += fmt.Sprintf(` where lower('%s')::bytea < nickname_byt`, *params.Since)
 		}
 
 	}
@@ -162,14 +162,12 @@ func (p *PGRepository) CreateThread(slugForum string, thread models.Thread) (*mo
 			((select slug as forum from main.forum where lower(slug) = lower('%s')),
 			(select forum_id as forum from main.forum where lower(slug) = lower('%s')),
 			(select user_id from main.users where lower(nickname) = lower('%s')),
-			'%s', '%s', '%s', nullif(?, ''), ?, '%v') returning *`,
-		slugForum, slugForum,
-		thread.Nickname, thread.Nickname,
-		thread.Title, thread.Message, thread.Votes)
+			'%s', '%s', '%s', nullif(?, ''), ?, %d) returning *`,
+		slugForum, slugForum, thread.Nickname,
+		thread.Nickname, thread.Title, thread.Message, thread.Votes)
 	_, err := p.db.Query(&thread, query, thread.Slug, thread.CreateDate)
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "ERROR #23505") {
-
 			var oldThread models.Thread
 			query := fmt.Sprintf(`select  main.thread.nickname, main.thread.create_date, main.thread.thread_id, 
 			main.thread.message, main.thread.slug, main.thread.title, main.thread.forum

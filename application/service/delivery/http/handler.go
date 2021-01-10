@@ -1,8 +1,11 @@
 package http
 
 import (
+	"forum/application/common"
 	"forum/application/service"
-	"github.com/gin-gonic/gin"
+	"github.com/buaazp/fasthttprouter"
+	"github.com/mailru/easyjson"
+	"github.com/valyala/fasthttp"
 	"net/http"
 )
 
@@ -10,35 +13,38 @@ type UserHandler struct {
 	UserUseCase service.UseCase
 }
 
-func NewRest(router *gin.RouterGroup, useCase service.UseCase) *UserHandler {
+func NewRest(router *fasthttprouter.Router, useCase service.UseCase) *UserHandler {
 	rest := &UserHandler{UserUseCase: useCase}
 	rest.routes(router)
 	return rest
 }
 
-func (u *UserHandler) routes(router *gin.RouterGroup) {
-	router.POST("/clear", u.ClearDB)
-	router.GET("/status", u.StatusDB)
+func (u *UserHandler) routes(router *fasthttprouter.Router) {
+	router.POST("/api/service/clear", u.ClearDB)
+	router.GET("/api/service/status", u.StatusDB)
 }
 
-func (u *UserHandler) StatusDB(ctx *gin.Context) {
+func (u *UserHandler) StatusDB(c *fasthttp.RequestCtx) {
 
 	result, err := u.UserUseCase.GetStatusDB()
 
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.AbortWithError(http.StatusInternalServerError, err)
-		return
+		c.SetStatusCode(http.StatusInternalServerError)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(result, c)
 	}
-
-	ctx.JSON(http.StatusOK, result)
 }
 
-func (u *UserHandler) ClearDB(ctx *gin.Context) {
+func (u *UserHandler) ClearDB(c *fasthttp.RequestCtx) {
 	err := u.UserUseCase.ClearDB()
-	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, err)
-		return
-	}
 
-	ctx.Status(http.StatusOK)
+	if err != nil {
+		c.SetStatusCode(http.StatusInternalServerError)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+	}
 }

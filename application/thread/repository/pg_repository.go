@@ -150,8 +150,6 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 
 	}
 
-	query := fmt.Sprintf(`insert into main.post values`)
-
 	values := ""
 	timeCreate := time.Now()
 	for i := range posts {
@@ -202,7 +200,7 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 		}
 	}
 
-	query = fmt.Sprintf(`insert into main.post (forum_id, forum, user_id, author, thread_id, 
+	query := fmt.Sprintf(`insert into main.post (forum_id, forum, user_id, author, thread_id, 
 			thread, message, parent, is_edited, created) values %s returning post_id, created`, values)
 
 	_, err = p.db.Query(&posts, query)
@@ -215,76 +213,23 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 func (p *pgStorage) GetPostsThreadByIDTree(ID int, params models.PostParams) (*[]models.Post, error) {
 	var posts []models.Post
 	query := fmt.Sprintf(`
-			WITH RECURSIVE tree
-			AS
-			(
-			   SELECT
-					post_id, forum_id, forum, thread_id, parent, created, message, author, is_edited,
-					CAST (post_id AS VARCHAR (50)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-			   FROM main.post
-			   WHERE post.parent = 0
-			   UNION
-			   SELECT
-				   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-				   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(50)) , LEVEL + 1, f1.parent as sourse
-			   FROM
-				   tree
-					   JOIN main.post f1 ON f1.parent = tree.post_id
-			)
-			select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created
-			from tree
+			select post_id, forum, author, thread_id, message, parent, is_edited, created
+			from main.post
 			where thread_id = %d
 			`, ID)
 
-
-	if params.Sort == common.Tree {
+	if params.Since != nil {
 		if params.Desc {
-			query += " order by tree.PATH desc"
+			query += fmt.Sprintf(" and path < (select path from main.post where post_id = %d) ", *params.Since)
 		} else {
-			query += " order by tree.PATH"
+			query += fmt.Sprintf(" and path > (select path from main.post where post_id = %d) ", *params.Since)
 		}
 	}
 
-	if params.Since != nil {
-		orderBy := ""
-		if params.Desc {
-			orderBy = " desc "
-		}
-
-		query = fmt.Sprintf(` 
-				WITH RECURSIVE tree
-				   AS
-				   (
-					   SELECT
-						   post_id, forum_id, forum, thread_id, parent, created, message, author, is_edited,
-						   CAST (post_id AS VARCHAR (50)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-					   FROM main.post
-					   WHERE post.parent = 0
-					   UNION
-					   SELECT
-						   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-						   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(50)) , LEVEL + 1, f1.parent as sourse
-					   FROM
-						   tree
-					   JOIN main.post f1 ON f1.parent = tree.post_id
-				   ),
-				tree2 AS (
-					select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created, tree.PATH
-					from tree
-					where thread_id = %d
-					order by tree.PATH %s
-				),
-				tree3 AS (
-					select tree2.*, ROW_NUMBER() over(order by tree2.PATH %s) AS position
-					from tree2
-				)
-				select post_id, tree3.forum, tree3.author, tree3.thread_id, tree3.message, tree3.parent, tree3.is_edited, tree3.created
-				from tree3
-						 join main.thread on thread.thread_id = tree3.thread_id 
-				where tree3.position > (
-					select position from tree3
-					where post_id = %d )
-				`, ID, orderBy, orderBy, *params.Since)
+	if params.Desc {
+		query += " order by path desc, post_id desc "
+	} else {
+		query += " order by path, post_id "
 	}
 
 	if params.Limit != 0 {
@@ -301,91 +246,33 @@ func (p *pgStorage) GetPostsThreadByIDTree(ID int, params models.PostParams) (*[
 func (p *pgStorage) GetPostsThreadByIDParentTree(ID int, params models.PostParams) (*[]models.Post, error) {
 	var posts []models.Post
 
-	orderBy := ""
-	if params.Desc {
-		orderBy += " desc "
-	}
-
-	query := fmt.Sprintf(`
-		WITH RECURSIVE base_tree AS (
-			SELECT
-				post_id, post.forum_id, post.forum, post.thread_id, post.parent, post.created, post.message, post.author, post.is_edited,
-				CAST (post_id AS VARCHAR (5000)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-			FROM main.post
-			WHERE thread_id = %d and post.parent = 0
-			order by post_id %s
-			limit %d
-		),
-		 tree
-		   AS
-		   (
-			SELECT * FROM base_tree
-			   UNION
-			SELECT
-			   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-			   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(5000)) , LEVEL + 1, tree.sourse
-			FROM
-			   tree
-				   JOIN main.post f1 ON f1.parent = tree.post_id
-		   )
-		select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created
-		from tree
-			`, ID, orderBy, params.Limit)
-
-
-	if params.Sort == common.ParentTree {
-		if params.Desc {
-			query += " order by tree.sourse desc, tree.PATH"
-		} else {
-			query += " order by tree.PATH"
-		}
-	}
+	innerQuery := fmt.Sprintf("(select post_id from main.post where thread_id = %d and parent = 0 ", ID)
 
 	if params.Since != nil {
-		orderBy := " order by PATH"
 		if params.Desc {
-			orderBy = "  order by sourse desc, PATH "
+			innerQuery += fmt.Sprintf(` and path[1] < (select path[1] from main.post where post_id = %d) `, *params.Since)
+		} else {
+			innerQuery += fmt.Sprintf(` and path[1] > (select path[1] from main.post where post_id = %d) `, *params.Since)
 		}
-		query = fmt.Sprintf(` 
-				WITH RECURSIVE tree
-				   AS
-				   (
-					   SELECT
-						   post_id, forum_id, forum, thread_id, parent, created, message, author, is_edited,
-						   CAST (post_id AS VARCHAR (5000)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-					   FROM main.post
-					   WHERE post.parent = 0
-					   UNION
-					   SELECT
-						   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-						   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(5000)) , LEVEL + 1, sourse
-					   FROM
-						   tree
-					   JOIN main.post f1 ON f1.parent = tree.post_id
-				   ),
-				tree2 AS (
-					select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created, tree.PATH, tree.sourse
-					from tree
-					where thread_id = %d
-					%s
-				),
-				tree3 AS (
-					select tree2.*, ROW_NUMBER() over(%s) AS position
-					from tree2
-				)
-				select post_id, tree3.forum, tree3.author, tree3.thread_id, tree3.message, tree3.parent, tree3.is_edited, tree3.created
-				from tree3
-						 join main.thread on thread.thread_id = tree3.thread_id
-				where tree3.position > (
-					select position from tree3
-					where post_id = %d
-					)
-				`, ID, orderBy, orderBy, *params.Since)
 	}
 
-	//if params.Limit != 0 {
-	//	query += fmt.Sprintf(` limit %d`, params.Limit)
-	//}
+	if params.Desc {
+		innerQuery += " order by post_id desc "
+	} else {
+		innerQuery += " order by post_id "
+	}
+	innerQuery += fmt.Sprintf(" limit %d) ", params.Limit)
+
+
+	query := fmt.Sprintf(`select post_id, forum, author, thread_id, message, parent, is_edited, created
+			  from main.post 
+			  where path[1] in %s `, innerQuery)
+
+	if params.Desc {
+		query += " order by path[1] desc, path, post_id "
+	} else {
+		query += " order by path asc "
+	}
 
 	_, err := p.db.Query(&posts, query)
 	if err != nil {
@@ -467,78 +354,23 @@ func (p *pgStorage) SortForGetPostsThread(params models.PostParams) string {
 func (p *pgStorage) GetPostsThreadBySlugTree(slug string, params models.PostParams) (*[]models.Post, error) {
 	var posts []models.Post
 	query := fmt.Sprintf(`
-			WITH RECURSIVE tree
-			AS
-			(
-			   SELECT
-					post_id, forum_id, forum, thread_id, parent, created, message, author, is_edited,
-					CAST (post_id AS VARCHAR (50)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-			   FROM main.post
-			   WHERE post.parent = 0
-			   UNION
-			   SELECT
-				   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-				   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(50)) , LEVEL + 1, f1.parent as sourse
-			   FROM
-				   tree
-					   JOIN main.post f1 ON f1.parent = tree.post_id
-			)
-			select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created
-			from tree
-				 join main.thread on thread.thread_id = tree.thread_id
-			where lower(thread.slug) = lower('%s')
+			select post_id, forum, author, thread_id, message, parent, is_edited, created
+			from main.post
+			where lower(thread) = lower('%s')
 			`, slug)
 
-
-	if params.Sort == common.Tree {
+	if params.Since != nil {
 		if params.Desc {
-			query += " order by tree.PATH desc"
+			query += fmt.Sprintf(" and path < (select path from main.post where post_id = %d) ", *params.Since)
 		} else {
-			query += " order by tree.PATH"
+			query += fmt.Sprintf(" and path > (select path from main.post where post_id = %d) ", *params.Since)
 		}
 	}
 
-	if params.Since != nil {
-		orderBy := ""
-		if params.Desc {
-			orderBy = " desc "
-		}
-
-		query = fmt.Sprintf(` 
-				WITH RECURSIVE tree
-				   AS
-				   (
-					   SELECT
-						   post_id, forum_id, forum, thread_id, parent, created, message, author, is_edited,
-						   CAST (post_id AS VARCHAR (50)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-					   FROM main.post
-					   WHERE post.parent = 0
-					   UNION
-					   SELECT
-						   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-						   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(50)) , LEVEL + 1, f1.parent as sourse
-					   FROM
-						   tree
-					   JOIN main.post f1 ON f1.parent = tree.post_id
-				   ),
-				tree2 AS (
-					select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created, tree.PATH
-					from tree
-							 join main.thread on thread.thread_id = tree.thread_id
-					where lower(thread.slug) = lower('%s')
-					order by tree.PATH %s
-				),
-				tree3 AS (
-					select tree2.*, ROW_NUMBER() over(order by tree2.PATH %s) AS position
-					from tree2
-				)
-				select post_id, tree3.forum, tree3.author, tree3.thread_id, tree3.message, tree3.parent, tree3.is_edited, tree3.created
-				from tree3
-						 join main.thread on thread.thread_id = tree3.thread_id 
-				where tree3.position > (
-					select position from tree3
-					where post_id = %d )
-				`, slug, orderBy, orderBy, *params.Since)
+	if params.Desc {
+		query += " order by path desc, post_id desc "
+	} else {
+		query += " order by path, post_id "
 	}
 
 	if params.Limit != 0 {
@@ -555,93 +387,33 @@ func (p *pgStorage) GetPostsThreadBySlugTree(slug string, params models.PostPara
 func (p *pgStorage) GetPostsThreadBySlugParentTree(slug string, params models.PostParams) (*[]models.Post, error) {
 	var posts []models.Post
 
-	orderBy := ""
-	if params.Desc {
-		orderBy += " desc "
-	}
-
-	query := fmt.Sprintf(`
-		WITH RECURSIVE base_tree AS (
-			SELECT
-				post_id, post.forum_id, post.forum, post.thread_id, post.parent, post.created, post.message, post.author, post.is_edited,
-				CAST (post_id AS VARCHAR (5000)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-			FROM main.post
-					 join main.thread on thread.thread_id = post.thread_id
-			WHERE lower(thread.slug) = lower('%s') and post.parent = 0
-			order by post_id %s
-			limit %d
-		),
-		 tree
-		   AS
-		   (
-			SELECT * FROM base_tree
-			   UNION
-			SELECT
-			   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-			   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(5000)) , LEVEL + 1, tree.sourse
-			FROM
-			   tree
-				   JOIN main.post f1 ON f1.parent = tree.post_id
-		   )
-		select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created
-		from tree
-			`, slug, orderBy, params.Limit)
-
-
-	if params.Sort == common.ParentTree {
-		if params.Desc {
-			query += " order by tree.sourse desc, tree.PATH"
-		} else {
-			query += " order by tree.PATH"
-		}
-	}
+	innerQuery := fmt.Sprintf("(select post_id from main.post where lower(thread) = lower('%s') and parent = 0 ", slug)
 
 	if params.Since != nil {
-		orderBy := " order by PATH"
 		if params.Desc {
-			orderBy = "  order by sourse desc, PATH "
+			innerQuery += fmt.Sprintf(` and path[1] < (select path[1] from main.post where post_id = %d) `, *params.Since)
+		} else {
+			innerQuery += fmt.Sprintf(` and path[1] > (select path[1] from main.post where post_id = %d) `, *params.Since)
 		}
-		query = fmt.Sprintf(` 
-				WITH RECURSIVE tree
-				   AS
-				   (
-					   SELECT
-						   post_id, forum_id, forum, thread_id, parent, created, message, author, is_edited,
-						   CAST (post_id AS VARCHAR (5000)) as PATH, 0 as LEVEL, cast (post_id AS numeric) as sourse
-					   FROM main.post
-					   WHERE post.parent = 0
-					   UNION
-					   SELECT
-						   f1.post_id, f1.forum_id, f1.forum, f1.thread_id, f1.parent, f1.created, f1.message, f1.author, f1.is_edited,
-						   CAST ( tree.PATH ||'->'|| f1.post_id AS VARCHAR(5000)) , LEVEL + 1, sourse
-					   FROM
-						   tree
-					   JOIN main.post f1 ON f1.parent = tree.post_id
-				   ),
-				tree2 AS (
-					select post_id, tree.forum, tree.author, tree.thread_id, tree.message, tree.parent, tree.is_edited, tree.created, tree.PATH, tree.sourse
-					from tree
-							 join main.thread on thread.thread_id = tree.thread_id
-					where lower(thread.slug) = lower('%s')
-					%s
-				),
-				tree3 AS (
-					select tree2.*, ROW_NUMBER() over(%s) AS position
-					from tree2
-				)
-				select post_id, tree3.forum, tree3.author, tree3.thread_id, tree3.message, tree3.parent, tree3.is_edited, tree3.created
-				from tree3
-						 join main.thread on thread.thread_id = tree3.thread_id
-				where tree3.position > (
-					select position from tree3
-					where post_id = %d
-					)
-				`, slug, orderBy, orderBy, *params.Since)
 	}
 
-	//if params.Limit != 0 {
-	//	query += fmt.Sprintf(` limit %d`, params.Limit)
-	//}
+	if params.Desc {
+		innerQuery += " order by post_id desc "
+	} else {
+		innerQuery += " order by post_id "
+	}
+	innerQuery += fmt.Sprintf(" limit %d) ", params.Limit)
+
+
+	query := fmt.Sprintf(`select post_id, forum, author, thread_id, message, parent, is_edited, created
+			  from main.post 
+			  where path[1] in %s `, innerQuery)
+
+	if params.Desc {
+		query += " order by path[1] desc, path, post_id "
+	} else {
+		query += " order by path "
+	}
 
 	_, err := p.db.Query(&posts, query)
 	if err != nil {
@@ -684,8 +456,8 @@ func (p *pgStorage) GetPostsThreadBySlug(slug string, params models.PostParams) 
 	}
 	if posts == nil {
 		_, err := p.db.Query(&exc, `
-				select exists(select 1 from main.post
-				where lower(thread) = lower(?)) AS "exists"`, slug)
+				select exists(select 1 from main.thread
+				where lower(slug) = lower(?)) AS "exists"`, slug)
 		if err != nil {
 			return nil, err
 		}

@@ -19,7 +19,7 @@ type pgStorage struct {
 
 func (p *pgStorage) GetUserByID(ID int) (*models.User, error) {
 	var user models.User
-	query := fmt.Sprintf(`select * from main.users
+	query := fmt.Sprintf(`select about, email, fullname, nickname from main.users
 							where user_id = '%d'`, ID)
 
 	_, err := p.db.Query(&user, query)
@@ -31,7 +31,7 @@ func (p *pgStorage) GetUserByID(ID int) (*models.User, error) {
 
 func (p *pgStorage) GetUserByNickname(nickname string) (*models.User, error) {
 	var user models.User
-	query := fmt.Sprintf(`select * from main.users
+	query := fmt.Sprintf(`select about, email, fullname, nickname from main.users
 								 where lower(nickname) = lower('%s')`, nickname)
 
 	_, err := p.db.Query(&user, query)
@@ -54,7 +54,7 @@ func (p *pgStorage) CreateUser(user models.User) ([]models.User, *common.Err) {
 	if err != nil {
 		if strings.HasPrefix(err.Error(), "ERROR #23505") {
 			query := fmt.Sprintf(`
-				select * from main.users 
+				select about, email, fullname, nickname from main.users 
 				where lower(nickname) = lower('%s') or lower(email) = lower('%s')`, user.Nickname, user.Email)
 			_, err1 := p.db.Query(&listUsers, query)
 			if err1 != nil {
@@ -81,7 +81,7 @@ func (p *pgStorage) UpdateUser(userNew models.UserUpdate) (*models.User, *common
 				fullname = COALESCE(?, fullname), 
 				about = COALESCE(?, about)
 				where lower(nickname) = lower(?)
-				returning *`,
+				returning user_id, about, email, fullname, nickname`,
 		userNew.Email, userNew.Fullname, userNew.About, userNew.Nickname)
 	if user.UserID == 0 {
 		newErr := common.NewErr(409, "Already exist")

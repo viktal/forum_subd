@@ -59,6 +59,7 @@ type ThreadUpdate struct {
 	UserID  int   `json:"-"`
 }
 
+//easyjson:json
 type ListThread []Thread
 
 type ThreadParams struct {

@@ -43,6 +43,7 @@ type Post struct {
 	ThreadSlug string `json:"-"`
 }
 
+//easyjson:json
 type ListPosts []Post
 
 type PostFull struct {

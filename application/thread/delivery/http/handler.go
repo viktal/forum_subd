@@ -1,12 +1,14 @@
 package http
 
 import (
-	"fmt"
 	"forum/application/common"
 	"forum/application/models"
 	"forum/application/thread"
-	"github.com/gin-gonic/gin"
+	"github.com/buaazp/fasthttprouter"
+	"github.com/mailru/easyjson"
+	"github.com/valyala/fasthttp"
 	"net/http"
+	"strconv"
 )
 
 type UserHandler struct {
@@ -18,155 +20,161 @@ type Request struct {
 	Slug string `uri:"identification" binding:"string"`
 }
 
-func NewRest(router *gin.RouterGroup, useCase thread.UseCase) *UserHandler {
+func NewRest(router *fasthttprouter.Router, useCase thread.UseCase) *UserHandler {
 	rest := &UserHandler{UserUseCase: useCase}
 	rest.routes(router)
 	return rest
 }
 
-func (u *UserHandler) routes(router *gin.RouterGroup) {
-	router.POST("/:slug_or_id/create", u.CreatePost)
-	router.GET("/:slug_or_id/details", u.GetThreadDetails)
-	router.POST("/:slug_or_id/details", u.UpdateThread)
-	router.GET("/:slug_or_id/posts", u.GetPostsThread)
-	router.POST("/:slug_or_id/vote", u.VoteOnThread)
+func (u *UserHandler) routes(router *fasthttprouter.Router) {
+	router.POST("/api/thread/:slug_or_id/create", u.CreatePost)
+	router.GET("/api/thread/:slug_or_id/details", u.GetThreadDetails)
+	router.POST("/api/thread/:slug_or_id/details", u.UpdateThread)
+	router.GET("/api/thread/:slug_or_id/posts", u.GetPostsThread)
+	router.POST("/api/thread/:slug_or_id/vote", u.VoteOnThread)
 }
 
-func (u *UserHandler) GetThreadDetails(ctx *gin.Context) {
-	slugOrID := ctx.Param("slug_or_id")
+func (u *UserHandler) GetThreadDetails(c *fasthttp.RequestCtx) {
+	slugOrID := c.UserValue("slug_or_id").(string)
 	thread, err := u.UserUseCase.GetThreadDetails(slugOrID)
 
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found thread"))
-		return
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(thread, c)
 	}
-
-	ctx.JSON(http.StatusOK, thread)
 }
 
-func (u *UserHandler) CreatePost(ctx *gin.Context) {
-	slugOrID := ctx.Param("slug_or_id")
+func (u *UserHandler) CreatePost(c *fasthttp.RequestCtx) {
+	slugOrID := c.UserValue("slug_or_id").(string)
 
-	var posts models.ListPosts
-	if err := ctx.ShouldBindJSON(&posts); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+	posts := new(models.ListPosts)
+	_ = posts.UnmarshalJSON(c.PostBody())
 
 	thr, err := u.UserUseCase.GetThreadDetails(slugOrID)
 
-	if err != nil {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found thread"))
+	c.SetContentType("application/json")
+	if err != nil || thr.ThreadID == 0 {
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found"}, c)
 		return
-	}
-	if thr.ThreadID == 0 {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found thread"))
-		return
-	}
-
-	if len(posts) == 0 {
-		ctx.JSON(http.StatusCreated, posts)
+	} else if len(*posts) == 0 {
+		c.SetStatusCode(http.StatusCreated)
+		_, _ = easyjson.MarshalToWriter(posts, c)
 		return
 	}
 
-	newPosts, err := u.UserUseCase.CreatePosts(slugOrID, posts)
+	newPosts, err := u.UserUseCase.CreatePosts(slugOrID, *posts)
 
 	if err != nil {
 		if err.Error() == "Parent post was created in another thread" {
-			ctx.JSON(http.StatusConflict, err)
-			return
+			c.SetStatusCode(http.StatusConflict)
 		} else if err.Error() == "Not found" {
-			ctx.JSON(http.StatusNotFound, err)
-			return
+			c.SetStatusCode(http.StatusNotFound)
 		} else {
-			ctx.JSON(http.StatusInternalServerError, err)
-			return
+			c.SetStatusCode(http.StatusInternalServerError)
 		}
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found"}, c)
+	} else {
+		c.SetStatusCode(http.StatusCreated)
+		_, _ = easyjson.MarshalToWriter(newPosts, c)
 	}
-
-	ctx.JSON(http.StatusCreated, newPosts)
 }
 
-func (u *UserHandler) UpdateThread(ctx *gin.Context) {
-	slugOrID := ctx.Param("slug_or_id")
+func (u *UserHandler) UpdateThread(c *fasthttp.RequestCtx) {
+	slugOrID := c.UserValue("slug_or_id").(string)
 
 	var thread models.ThreadUpdate
-	if err := ctx.ShouldBindJSON(&thread); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+	_ = thread.UnmarshalJSON(c.PostBody())
+
+	c.SetContentType("application/json")
 
 	if thread.Message == nil && thread.Title == nil {
 		oldThread, err := u.UserUseCase.GetThreadDetails(slugOrID)
 		if err != nil {
-			ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found thread"))
+			c.SetStatusCode(http.StatusNotFound)
+			_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found"}, c)
 			return
 		} else {
-			ctx.JSON(http.StatusOK, oldThread)
+			c.SetStatusCode(http.StatusOK)
+			_, _ = easyjson.MarshalToWriter(oldThread, c)
 			return
 		}
 	}
 
 	newThread, err := u.UserUseCase.UpdateThread(slugOrID, thread)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, err)
-		return
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found"}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(newThread, c)
 	}
-
-	ctx.JSON(http.StatusOK, newThread)
 }
 
-func (u *UserHandler) GetPostsThread(ctx *gin.Context) {
-	slugOrID := ctx.Param("slug_or_id")
+func (u *UserHandler) GetPostsThread(c *fasthttp.RequestCtx) {
+	slugOrID := c.UserValue("slug_or_id").(string)
 
-	var params models.PostParams
-	if err := ctx.ShouldBindQuery(&params); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
+
+	limit, _ := strconv.Atoi(string(c.URI().QueryArgs().Peek("limit")))
+	desc, _ := strconv.ParseBool(string(c.URI().QueryArgs().Peek("desc")))
+	since, _ := strconv.Atoi(string(c.URI().QueryArgs().Peek("since")))
+	sort := string(c.URI().QueryArgs().Peek("sort"))
+	params := models.PostParams{
+		Limit: uint(limit),
+		Since: &since,
+		Sort: sort,
+		Desc: desc,
 	}
+	if *params.Since == 0 {
+		params.Since = nil
+	}
+
 	if params.Sort == "" {
 		params.Sort = common.Flat
 	}
 
 	posts, err := u.UserUseCase.GetPostsThread(slugOrID, params)
+
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.JSON(http.StatusInternalServerError, err)
-		return
+		c.SetStatusCode(http.StatusInternalServerError)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else if posts == nil {
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Not found"}, c)
+	} else if *posts == nil {
+		c.SetStatusCode(http.StatusOK)
+		c.Write([]byte("[]"))
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(models.ListPosts(*posts), c)
 	}
-
-	if posts == nil {
-		ctx.JSON(http.StatusNotFound, fmt.Errorf("Not found"))
-	}
-	if *posts == nil {
-		ctx.JSON(http.StatusOK, []int{})
-	//	return
-	//} else if *posts == nil {
-	//	ctx.JSON(http.StatusOK, []int{})
-		return
-	}
-
-	ctx.JSON(http.StatusOK, posts)
 }
 
-func (u *UserHandler) VoteOnThread(ctx *gin.Context) {
-	slugOrID := ctx.Param("slug_or_id")
+func (u *UserHandler) VoteOnThread(c *fasthttp.RequestCtx) {
+	slugOrID := c.UserValue("slug_or_id").(string)
 
 	var vote models.Vote
-	if err := ctx.ShouldBindJSON(&vote); err != nil {
-		ctx.AbortWithError(http.StatusBadRequest, err)
-		return
-	}
+	_ = vote.UnmarshalJSON(c.PostBody())
 
+
+	c.SetContentType("application/json")
 	if vote.Voice != 1 && vote.Voice != -1 {
-		ctx.JSON(http.StatusInternalServerError, common.RespError{Err: "Wrong voice"})
+		c.SetStatusCode(http.StatusInternalServerError)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: "Wrong voice"}, c)
 		return
 	}
 
-	threads, err := u.UserUseCase.VoteOnThread(slugOrID, vote)
+	thread, err := u.UserUseCase.VoteOnThread(slugOrID, vote)
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, err)
-		return
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(thread, c)
 	}
-
-	ctx.JSON(http.StatusOK, threads)
 }

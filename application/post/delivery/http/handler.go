@@ -1,9 +1,12 @@
 package http
 
 import (
+	"forum/application/common"
 	"forum/application/models"
 	"forum/application/post"
-	"github.com/gin-gonic/gin"
+	"github.com/buaazp/fasthttprouter"
+	"github.com/mailru/easyjson"
+	"github.com/valyala/fasthttp"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,68 +16,53 @@ type UserHandler struct {
 	UserUseCase post.UseCase
 }
 
-func NewRest(router *gin.RouterGroup, useCase post.UseCase) *UserHandler {
+func NewRest(router *fasthttprouter.Router, useCase post.UseCase) *UserHandler {
 	rest := &UserHandler{UserUseCase: useCase}
 	rest.routes(router)
 	return rest
 }
 
-func (u *UserHandler) routes(router *gin.RouterGroup) {
-	router.GET("/:id/details", u.GetPostDetails)
-	router.POST("/:id/details", u.UpdatePostDetails)
+func (u *UserHandler) routes(router *fasthttprouter.Router) {
+	router.GET("/api/post/:id/details", u.GetPostDetails)
+	router.POST("/api/post/:id/details", u.UpdatePostDetails)
 }
 
-func (u *UserHandler) GetPostDetails(ctx *gin.Context) {
-	var err error
-	var id int
-	if id, err = strconv.Atoi(ctx.Param("id")); err != nil {
-		ctx.JSON(http.StatusBadRequest, err)
-		return
-	}
+func (u *UserHandler) GetPostDetails(c *fasthttp.RequestCtx) {
+	related := string(c.URI().QueryArgs().Peek("related"))
+	id, _ := strconv.ParseInt(c.UserValue("id").(string), 10, 64)
 
-	var ListRelated struct {
-		Related string `form:"related"`
-	}
+	result, err := u.UserUseCase.GetPostDetails(int(id), strings.Split(related, ","))
 
-	_ = ctx.ShouldBindQuery(&ListRelated)
-	err = nil
-
-	result, err := u.UserUseCase.GetPostDetails(id, strings.Split(ListRelated.Related, ","))
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, err)
-		return
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(result, c)
 	}
-
-	ctx.JSON(http.StatusOK, result)
 }
 
-func (u *UserHandler) UpdatePostDetails(ctx *gin.Context) {
-	var err error
-	var id int
-	if id, err = strconv.Atoi(ctx.Param("id")); err != nil {
-		ctx.JSON(http.StatusBadRequest, err)
-		return
-	}
+func (u *UserHandler) UpdatePostDetails(c *fasthttp.RequestCtx) {
+	id, _ := strconv.ParseInt(c.UserValue("id").(string), 10, 64)
 
-	var body struct {
-		Message string
-	}
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		ctx.JSON(http.StatusBadRequest, err)
-		return
-	}
+	var message common.MessageError
+	_ = message.UnmarshalJSON(c.PostBody())
 
 	var newPost *models.Post
-	if body.Message == "" {
-		newPost, err = u.UserUseCase.GetPostByID(id)
+	var err error
+	if message.Message == "" {
+		newPost, err = u.UserUseCase.GetPostByID(int(id))
 	} else {
-		newPost, err = u.UserUseCase.UpdatePostDetails(id, body.Message)
+		newPost, err = u.UserUseCase.UpdatePostDetails(int(id), message.Message)
 	}
 
+	c.SetContentType("application/json")
 	if err != nil {
-		ctx.JSON(http.StatusNotFound, err)
-		return
+		c.SetStatusCode(http.StatusNotFound)
+		_, _ = easyjson.MarshalToWriter(common.MessageError{Message: err.Error()}, c)
+	} else {
+		c.SetStatusCode(http.StatusOK)
+		_, _ = easyjson.MarshalToWriter(newPost, c)
 	}
-
-	ctx.JSON(http.StatusOK, newPost)
 }

@@ -1,16 +1,13 @@
 package api
 
 import (
-	"context"
 	"fmt"
-	"forum/application/common"
-	"github.com/apsdehal/go-logger"
-	"github.com/gin-gonic/gin"
-	"net/http/pprof"
-
 	UserHandler "forum/application/user/delivery/http"
 	UserRepository "forum/application/user/repository"
 	UserUseCase "forum/application/user/usecase"
+	"github.com/apsdehal/go-logger"
+	"github.com/buaazp/fasthttprouter"
+	"github.com/valyala/fasthttp"
 
 	ThreadHandler "forum/application/thread/delivery/http"
 	ThreadRepository "forum/application/thread/repository"
@@ -29,11 +26,7 @@ import (
 	ServiceUseCase "forum/application/service/usecase"
 
 	"github.com/go-pg/pg/v9"
-	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
 )
 
 type dbConfig struct {
@@ -58,7 +51,7 @@ type App struct {
 	config   Config
 	log      *Logger
 	doneChan chan bool
-	route    *gin.Engine
+	route    *fasthttprouter.Router
 	db       *pg.DB
 }
 
@@ -74,26 +67,8 @@ func NewApp(config Config) *App {
 
 	infoLogger.SetLogLevel(logger.ErrorLevel)
 
-	gin.SetMode(gin.ReleaseMode)
-	r := gin.New()
-	//r.Use(common.RequestLogger(log.InfoLogger))
-	//r.Use(common.ErrorLogger(log.ErrorLogger))
-	//r.Use(common.ErrorMiddleware())
-	r.Use(common.Recovery(log.ErrorLogger))
+	router := fasthttprouter.New()
 
-	// Only for requests WITHOUT credentials, the literal value "*" can be specified
-	//corsMiddleware := cors.New(cors.Config{
-	//	AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"},
-	//	AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization"},
-	//	ExposeHeaders:    []string{"Content-Length"},
-	//	AllowCredentials: true,
-	//	AllowOriginFunc: func(origin string) bool {
-	//		return strings.HasPrefix(origin, "http://127.0.0.1")
-	//	},
-	//	MaxAge: time.Hour,
-	//})
-	//
-	//r.Use(corsMiddleware)
 
 	db := pg.Connect(&pg.Options{
 		Addr:     fmt.Sprintf("%s:%d", config.Db.Host, config.Db.Port),
@@ -102,45 +77,43 @@ func NewApp(config Config) *App {
 		Database: config.Db.Name,
 	})
 
-	//gin.Default()
-	api := r.Group("/api")
 
 	UserRep := UserRepository.NewPgRepository(db)
 	userCase := UserUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, UserRep)
-	UserHandler.NewRest(api.Group("/user"), userCase)
+	UserHandler.NewRest(router, userCase)
 
 	ThreadRep := ThreadRepository.NewPgRepository(db)
 	ThreadCase := ThreadUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, ThreadRep)
-	ThreadHandler.NewRest(api.Group("/thread"), ThreadCase)
+	ThreadHandler.NewRest(router, ThreadCase)
 
 	ServiceRep := ServiceRepository.NewPgRepository(db)
 	ServiceCase := ServiceUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, ServiceRep)
-	ServiceHandler.NewRest(api.Group("/service"), ServiceCase)
+	ServiceHandler.NewRest(router, ServiceCase)
 
 	ForumRep := ForumRepository.NewPgRepository(db)
 	ForumCase := ForumUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, ForumRep, UserRep)
-	ForumHandler.NewRest(api.Group("/forum"), ForumCase)
+	ForumHandler.NewRest(router, ForumCase)
 
 	PostRep := PostRepository.NewPgRepository(db)
 	PostCase := PostUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, PostRep, UserRep, ForumRep, ThreadRep)
-	PostHandler.NewRest(api.Group("/post"), PostCase)
+	PostHandler.NewRest(router, PostCase)
 
-	r.GET("/debug/pprof/", func(c *gin.Context) { pprof.Index(c.Writer, c.Request) })
-	r.GET("/debug/pprof/cmdline", func(c *gin.Context) { pprof.Cmdline(c.Writer, c.Request) })
-	r.GET("/debug/pprof/profile", func(c *gin.Context) { pprof.Profile(c.Writer, c.Request) })
-	r.GET("/debug/pprof/symbol", func(c *gin.Context) { pprof.Symbol(c.Writer, c.Request) })
-	r.GET("/debug/pprof/trace", func(c *gin.Context) { pprof.Trace(c.Writer, c.Request) })
-
-	r.POST("/debug/pprof/", func(c *gin.Context) { pprof.Index(c.Writer, c.Request) })
-	r.POST("/debug/pprof/cmdline", func(c *gin.Context) { pprof.Cmdline(c.Writer, c.Request) })
-	r.POST("/debug/pprof/profile", func(c *gin.Context) { pprof.Profile(c.Writer, c.Request) })
-	r.POST("/debug/pprof/symbol", func(c *gin.Context) { pprof.Symbol(c.Writer, c.Request) })
-	r.POST("/debug/pprof/trace", func(c *gin.Context) { pprof.Trace(c.Writer, c.Request) })
+	//router.GET("/debug/pprof/", func(c *fasthttp.RequestCtx) { pprof.Index(c.Writer, c.Request) })
+	//router.GET("/debug/pprof/cmdline", func(c *fasthttp.RequestCtx) { pprof.Cmdline(c.Writer, c.Request) })
+	//router.GET("/debug/pprof/profile", func(c *fasthttp.RequestCtx) { pprof.Profile(c.Writer, c.Request) })
+	//router.GET("/debug/pprof/symbol", func(c *fasthttp.RequestCtx) { pprof.Symbol(c.Writer, c.Request) })
+	//router.GET("/debug/pprof/trace", func(c *fasthttp.RequestCtx) { pprof.Trace(c.Writer, c.Request) })
+	//
+	//router.POST("/debug/pprof/", func(c *fasthttp.RequestCtx) { pprof.Index(c.Writer, c.Request) })
+	//router.POST("/debug/pprof/cmdline", func(c *fasthttp.RequestCtx) { pprof.Cmdline(c.Writer, c.Request) })
+	//router.POST("/debug/pprof/profile", func(c *fasthttp.RequestCtx) { pprof.Profile(c.Writer, c.Request) })
+	//router.POST("/debug/pprof/symbol", func(c *fasthttp.RequestCtx) { pprof.Symbol(c.Writer, c.Request) })
+	//router.POST("/debug/pprof/trace", func(c *fasthttp.RequestCtx) { pprof.Trace(c.Writer, c.Request) })
 
 	app := App{
 		config:   config,
 		log:      log,
-		route:    r,
+		route:    router,
 		doneChan: make(chan bool, 1),
 		db:       db,
 	}
@@ -149,38 +122,9 @@ func NewApp(config Config) *App {
 }
 
 func (a *App) Run() {
-
-	srv := &http.Server{
-		Addr:    a.config.Listen,
-		Handler: a.route,
-	}
-
-	go func() {
-		a.log.InfoLogger.Infof("Start listening on %s", a.config.Listen)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			a.log.ErrorLogger.Fatalf("listen: %s\n", err)
-		}
-	}()
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	select {
-	case <-quit:
-	case <-a.doneChan:
-	}
-	a.log.InfoLogger.Info("Shutdown Server (timeout of 1 seconds) ...")
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Microsecond)
-	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
-		mes := fmt.Sprint("Server Shutdown:", err)
-		a.log.ErrorLogger.Fatal(mes)
-	}
-
-	<-ctx.Done()
-	a.log.InfoLogger.Info("Server exiting")
+	_ = fasthttp.ListenAndServe(":5000", a.route.Handler)
 }
 
 func (a *App) Close() {
-	a.db.Close()
-	a.doneChan <- true
+	_ = a.db.Close()
 }

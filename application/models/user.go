@@ -24,6 +24,9 @@ type User struct {
 	UserID int `json:"-"`
 }
 
+//easyjson:json
+type UserList []User
+
 type UserUpdate struct {
 
 	// Описание пользователя.

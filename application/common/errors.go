@@ -1,9 +1,5 @@
 package common
 
-import (
-	"encoding/json"
-)
-
 const (
 	EmptyFieldErr = "Обязательные поля не заполнены."
 	SessionErr    = "Ошибка авторизации. Попробуйте авторизоваться повторно."
@@ -23,17 +19,9 @@ type RespError struct {
 func (e Err) Code() int         { return e.code }
 func (e Err) Error() string     { return e.message }
 
-func (e Err) MarshalJSON() ([]byte, error) {
-	ret := map[string]interface{}{
-		"code":    e.code,
-		"message": e.message,
-	}
-	return json.Marshal(ret)
-}
 
 func (e Err) String() string {
-	data, _ := e.MarshalJSON()
-	return string(data)
+	return e.message
 }
 
 func NewErr(code int, message string) Err {
@@ -41,4 +29,8 @@ func NewErr(code int, message string) Err {
 		code:    code,
 		message: message,
 	}
+}
+
+type MessageError struct {
+	Message string      `json:"message"`
 }
