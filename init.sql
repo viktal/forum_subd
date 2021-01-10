@@ -98,13 +98,11 @@ CREATE INDEX if not exists user_nickname ON main.users using hash (nickname);
 CREATE INDEX if not exists user_email ON main.users using hash (email);
 
 CREATE INDEX if not exists forum_slug ON main.forum using hash (slug);
-CREATE INDEX if not exists forum_auth ON main.forum (author);
 
 create unique index if not exists forum_users_unique on forum_users (forum, user_id);
 cluster forum_users using forum_users_unique;
 
 CREATE INDEX if not exists thr_slug ON main.thread using hash (slug);
-CREATE INDEX if not exists thr_nick ON main.thread using hash (nickname);
 CREATE INDEX if not exists thr_date ON main.thread (create_date);
 CREATE INDEX if not exists thr_forum ON main.thread using hash (forum);
 CREATE INDEX if not exists thr_forum_date ON main.thread (forum, create_date);
@@ -112,23 +110,11 @@ CREATE INDEX if not exists thr_forum_date ON main.thread (forum, create_date);
 create index if not exists post_id_path on main.post (post_id, (path[1]));
 create index if not exists post_thread_id_path1_parent on main.post (thread, post_id, (path[1]), parent);
 create index if not exists post_thread_path_id on main.post (thread, path, post_id);
-create index if not exists post_path on main.post (path);
 create index if not exists post_path1 on main.post ((path[1]));
-
-
 create index if not exists post_thread_id on main.post (thread, post_id);
-create index if not exists post_author_forum on main.post (author, forum);
--- CREATE INDEX if not exists pos_forum_id ON main.post (forum_id);
--- CREATE INDEX if not exists pos_forum ON main.post using hash (forum);
--- CREATE INDEX if not exists pos_author ON main.post using hash (author);
-
-CREATE INDEX if not exists pos_date ON main.post (created);
-CREATE INDEX if not exists pos_thr_id ON main.post (thread_id);
-CREATE INDEX if not exists pos_thr_id_parent ON main.post (thread_id, parent);
-CREATE INDEX if not exists pos_thread ON main.post using hash (thread);
+CREATE INDEX if not exists post_thr_id ON main.post (thread_id);
 
 create unique index if not exists vote_unique on main.vote (user_id, thread_id);
-CREATE INDEX if not exists vote_voice ON main.vote (voice);
 
 ------------------------------------------------------------------------------------
 
@@ -201,45 +187,6 @@ CREATE TRIGGER count_thread_forum
     ON main.thread
     FOR EACH ROW
 EXECUTE PROCEDURE update_cnt_thread();
-
-------------------------------------------------------------------------------------
-
-create or replace function update_cnt_post()
-    returns trigger
-    language plpgsql as
-$BODY$
-begin
-    if TG_OP = 'INSERT' then
-        update main.forum set posts = posts + 1 where forum_id = new.forum_id;
-    end if;
-    return new;
-end
-$BODY$;
-
-CREATE TRIGGER count_post_forum
-    AFTER INSERT
-    ON main.post
-    FOR EACH ROW
-EXECUTE PROCEDURE update_cnt_post();
-
-------------------------------------------------------------------------------------
-
-create or replace function add_forum_user_on_post_create()
-    returns trigger
-    language plpgsql as
-$BODY$
-begin
-    insert into main.forum_users (user_id, forum) values (new.user_id, new.forum) on conflict do nothing;
-    return new;
-end
-$BODY$;
-
-CREATE TRIGGER update_forum_users_new_post
-    AFTER INSERT
-    ON main.post
-    FOR EACH ROW
-EXECUTE PROCEDURE add_forum_user_on_post_create();
-
 
 ------------------------------------------------------------------------------------
 

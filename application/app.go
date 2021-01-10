@@ -2,6 +2,9 @@ package api
 
 import (
 	"fmt"
+	PostHandler "forum/application/post/delivery/http"
+	PostRepository "forum/application/post/repository"
+	PostUseCase "forum/application/post/usecase"
 	ThreadHandler "forum/application/thread/delivery/http"
 	ThreadRepository "forum/application/thread/repository"
 	ThreadUseCase "forum/application/thread/usecase"
@@ -11,11 +14,6 @@ import (
 	"github.com/apsdehal/go-logger"
 	"github.com/buaazp/fasthttprouter"
 	"github.com/valyala/fasthttp"
-	"github.com/valyala/fasthttp/pprofhandler"
-
-	PostHandler "forum/application/post/delivery/http"
-	PostRepository "forum/application/post/repository"
-	PostUseCase "forum/application/post/usecase"
 
 	ForumHandler "forum/application/forum/delivery/http"
 	ForumRepository "forum/application/forum/repository"
@@ -86,7 +84,6 @@ func NewApp(config Config) *App {
 		},
 	})
 
-
 	UserRep := UserRepository.NewPgRepository(db)
 	userCase := UserUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, UserRep)
 	UserHandler.NewRest(router, userCase)
@@ -107,7 +104,7 @@ func NewApp(config Config) *App {
 	PostCase := PostUseCase.NewUseCase(log.InfoLogger, log.ErrorLogger, PostRep, UserRep, ForumRep, ThreadRep)
 	PostHandler.NewRest(router, PostCase)
 
-	router.GET("/debug/*path", pprofhandler.PprofHandler)
+	//router.GET("/debug/*path", pprofhandler.PprofHandler)
 	app := App{
 		config:   config,
 		log:      log,

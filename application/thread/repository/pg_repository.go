@@ -187,6 +187,19 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 	}
 
 	values = ""
+	for i := range userIDs {
+		values += fmt.Sprintf("(%d, '%s')", userIDs[i], thread.Forum)
+		if i < len(userIDs)-1 {
+			values += ", "
+		}
+	}
+	query = fmt.Sprintf(`insert into main.forum_users values %s on conflict do nothing;`, values)
+	_, err = p.db.Exec(query)
+	if err != nil {
+		return nil, err
+	}
+
+	values = ""
 	timeCreate := time.Now()
 	for i := range posts {
 		posts[i].ForumID = thread.ForumID
@@ -220,6 +233,11 @@ func (p *pgStorage) CreatePosts(slugOrID string, byType string, posts models.Lis
 			thread, message, parent, is_edited, created) values %s returning post_id, created`, values)
 
 	_, err = p.db.Query(&posts, query)
+	if err != nil {
+		return nil, err
+	}
+	query = fmt.Sprintf("update main.forum set posts = (posts + %d) where slug = '%s'", len(posts), thread.Forum)
+	_, err = p.db.Exec(query)
 	if err != nil {
 		return nil, err
 	}
